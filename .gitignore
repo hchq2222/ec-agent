@@ -1,0 +1,45 @@
+# ---------- 环境变量 / 密钥 ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------- Node ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- 数据 / 运行时产物 ----------
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+data/
+uploads/
+tmp/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
