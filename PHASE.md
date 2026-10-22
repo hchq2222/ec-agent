@@ -86,6 +86,7 @@
 - ✅ **技术架构**：分层架构、中间件职责边界、数据模型（原 9 表 + 补 5 表）、任务状态机与对账器、部署拓扑、失败处理矩阵、架构验收标准 → `docs/技术设计/TD-001-总体技术架构.md`。
 - ✅ **中间件**：测试服务器（`203.0.113.10`）PostgreSQL 17 / Redis 7.4 / MinIO 就绪；新增 PG 角色 `dianshang` + schema `app`、Redis ACL 用户、四个业务桶（`raw`/`work`/`assets`/`export`）及生命周期；MinIO 强制 TLS（PG / Redis 同日后改为明文）；从外网完成 PG 读写、Redis roundtrip、MinIO put/get、TLS 握手验证 → `infrastructure/测试环境中间件访问说明.md`。
 - ✅ **文档结构**：`README.md` 作为项目说明与文档索引，`AGENTS.md` 只做导航，本文件记录进度。
+- ✅ **凭据脱敏**：真实密码移入本地 `infrastructure/credentials.local.md`（已被 `*.local.md` 忽略），仓库文档改为 `${XXX_PASSWORD}` 占位符；重写提交历史并强推，远端 `main` 已无任何明文密码。
 - 🟡 **渠道接入方案**：曾完成一版渠道抽象 / 能力矩阵 / 产物转存 / 计费对账设计，文档已移除；**结论暂时保留**（聚合渠道为主 + 官方按能力兜底，产物必须同一步转存），具体方案待后续重新确定。
 - ✅ **PostgreSQL 放开明文**：按需求把 `pg_hba.conf` 的 `hostnossl` 从 `reject` 改为 `scram-sha-256`（改用原地覆盖 + `chmod 644` + reload；TLS 保持可用），外网已验证 `sslmode=disable` 可连、错误密码仍被拒。
 - ✅ **Redis 改为明文**：`redis.conf` 的 `port 0` → `6379`、`tls-port` 关闭，compose 健康检查改为 `redis-cli ping` 并重建容器；AOF 数据完好，外网明文读写、错误密码拒绝、匿名拒绝均验证通过。
