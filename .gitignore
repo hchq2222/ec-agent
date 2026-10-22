@@ -43,3 +43,11 @@ tmp/
 .DS_Store
 Thumbs.db
 *.swp
+
+# ---------- AI 工具本地状态 ----------
+.workbuddy/
+
+# ---------- 本地凭据（不入库） ----------
+*.local.md
+*.local.env
+!*.example.local.md

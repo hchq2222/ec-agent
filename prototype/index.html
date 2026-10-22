@@ -1,0 +1,1408 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>电商视觉工作台 · MVP 原型 v0.1</title>
+<style>
+:root{
+  --bg:#f4f5f7;
+  --paper:#ffffff;
+  --ink:#1f2430;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --line-2:#eef0f3;
+  --brand:#4f46e5;
+  --brand-soft:#eef2ff;
+  --brand-ink:#4338ca;
+  /* 文字色需在浅底上满足 4.5:1 对比度，故取 700 色阶 */
+  --green:#15803d;
+  --green-soft:#ecfdf3;
+  --amber:#b45309;
+  --amber-soft:#fffbeb;
+  --red:#b91c1c;
+  --red-soft:#fef2f2;
+  --blue:#2563eb;
+  --blue-soft:#eff6ff;
+  --sidebar-w:248px;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.10);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg);color:var(--ink);
+  font:14px/1.6 "Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,p,ul{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:inherit;text-decoration:none}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Shell ---------- */
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;height:100vh;overflow:hidden}
+
+/* Sidebar */
+.sidebar{background:#171a26;color:#c7cbd8;display:flex;flex-direction:column;min-height:0}
+.sidebar .brand{display:flex;gap:11px;align-items:center;padding:20px 18px 18px}
+.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#6d5cff,#4f46e5);display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;box-shadow:0 4px 12px rgba(79,70,229,.4)}
+.brand b{color:#fff;font-size:15px;letter-spacing:.2px}
+.brand small{display:block;color:#8a8fa3;font-size:11px;font-weight:400}
+.nav{padding:8px 12px;overflow-y:auto;flex:1;min-height:0}
+.nav-group{font-size:11px;color:#8a8fa3;letter-spacing:.5px;margin:14px 8px 6px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 11px;border-radius:9px;color:#b9bdcc;font-size:13.5px;text-align:left;transition:.15s}
+.nav-item:hover{background:#222635;color:#fff}
+.nav-item.active{background:linear-gradient(90deg,rgba(99,102,241,.22),rgba(99,102,241,.08));color:#fff;font-weight:600}
+.nav-item .ico{width:18px;height:18px;display:grid;place-items:center;flex:none}
+.nav-item .tag{margin-left:auto;font-size:10px;background:#2c3140;color:#9aa0b5;border-radius:6px;padding:1px 6px}
+.sidebar-foot{padding:14px 16px;border-top:1px solid #262a38;font-size:12px;color:#8a8fa3}
+.sidebar-foot .kv{display:flex;justify-content:space-between;margin-top:6px}
+.sidebar-foot .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#16a34a;margin-right:5px}
+
+/* Main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{height:60px;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 22px;flex:none}
+.topbar .crumb{font-size:13px;color:var(--muted)}
+.topbar .crumb b{color:var(--ink);font-weight:600}
+.topbar .spacer{flex:1}
+.topbar .status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);background:var(--bg);padding:6px 11px;border-radius:8px}
+.topbar .avatar{width:32px;height:32px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;font-size:13px}
+.content{flex:1;min-height:0;overflow-y:auto;padding:22px}
+
+.page{display:none;max-width:1280px;margin:0 auto}
+.page.active{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* Headings */
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}
+.page-head h1{font-size:22px;letter-spacing:-.3px}
+.page-head p{color:var(--muted);font-size:13px;margin-top:3px}
+.badge{margin-left:8px;font-size:11px;font-weight:600;background:var(--brand-soft);color:var(--brand-ink);padding:2px 8px;border-radius:20px;vertical-align:middle}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;font-size:13px;font-weight:600;border:1px solid transparent;transition:.15s;white-space:nowrap}
+.btn-primary{background:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(79,70,229,.35)}
+.btn-primary:hover{background:#4338ca}
+.btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+.btn-ghost:hover{background:#f9fafb}
+.btn-soft{background:var(--brand-soft);color:var(--brand-ink)}
+.btn-soft:hover{background:#e0e7ff}
+.btn-danger{background:#fff;border-color:#fecaca;color:var(--red)}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Cards & grid */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{padding:14px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card-h h3{font-size:14px}
+.card-h .sub{font-size:12px;color:var(--muted)}
+.card-b{padding:16px}
+.grid{display:grid;gap:14px}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.kpi .k-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.kpi .k-label{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .k-id{font-size:11px;font-weight:700;background:var(--brand-soft);color:var(--brand-ink);padding:2px 8px;border-radius:6px}
+.kpi .k-value{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1}
+.kpi .k-value small{font-size:13px;font-weight:600;color:var(--muted);margin-left:3px}
+.kpi .k-bar{position:relative;height:6px;background:var(--line-2);border-radius:4px;margin:10px 0 8px}
+.kpi .k-bar i{display:block;height:100%;border-radius:4px;background:var(--brand)}
+.kpi .k-bar i.pass{background:var(--green)}
+.kpi .k-bar i.fail{background:var(--red)}
+/* 阈值刻度线：≥ 类指标越过刻度为达标，≤ 类指标未越过刻度为达标 */
+.kpi .k-bar em{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink);border-radius:1px}
+.kpi .k-note{font-size:11px;color:var(--muted)}
+
+/* Flow */
+.flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:16px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px}
+.flow-step{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:78px;text-align:center;position:relative}
+.flow-step .node{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:18px;border:1px solid #e0e7ff}
+.flow-step.done .node{background:var(--green-soft);color:var(--green);border-color:#bbf7d0}
+.flow-step.cur .node{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 4px 12px rgba(79,70,229,.35)}
+.flow-step span{font-size:11px;color:var(--muted)}
+.flow-step b{font-size:10px;color:var(--ink)}
+.flow-arrow{color:#c3c8d4;font-size:16px;flex:none}
+
+/* Tag / pill */
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+.pill.green{background:var(--green-soft);color:var(--green)}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.red{background:var(--red-soft);color:var(--red)}
+.pill.blue{background:var(--blue-soft);color:var(--blue)}
+.pill.gray{background:#f3f4f6;color:var(--muted)}
+.pill.brand{background:var(--brand-soft);color:var(--brand-ink)}
+
+/* Tables */
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.table td{padding:11px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.table tr:hover td{background:#fafbfc}
+
+/* Forms */
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px}
+.field label .req{color:var(--red)}
+.field label .src{margin-left:6px}
+.input,.select,.textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;background:#fff;transition:.15s}
+.input:focus,.select:focus,.textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.textarea{resize:vertical;min-height:72px;line-height:1.6}
+.row{display:grid;gap:12px}
+.row.cols-2{grid-template-columns:1fr 1fr}
+.row.cols-3{grid-template-columns:1fr 1fr 1fr}
+
+/* Source tag */
+.src-tag{font-size:10px;font-weight:600;padding:1px 6px;border-radius:5px;white-space:nowrap}
+.src-tag.human{background:#f3f4f6;color:#4b5563}
+.src-tag.ai{background:var(--amber-soft);color:var(--amber);border:1px solid #fde68a}
+
+/* Scene thumbs */
+.scene-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.scene{position:relative;display:block;width:100%;padding:0;text-align:left;border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.15s;background:#fff}
+button.scene{cursor:pointer}
+button.scene:hover{border-color:var(--brand)}
+.scene.sel{border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,70,229,.15)}
+/* 缩略图统一按比例占位，避免固定高度与内部 aspect-ratio 冲突溢出 */
+.scene .ph{aspect-ratio:3/2;overflow:hidden;position:relative}
+.scene .ph.sq{aspect-ratio:1/1}
+.scene .ph.tall{aspect-ratio:3/4}
+.scene .ph svg{display:block}
+.scene .sc-name{padding:7px 9px;font-size:12px;font-weight:600}
+.scene .sc-tag{position:absolute;top:6px;left:6px;font-size:9px;font-weight:700;background:rgba(255,255,255,.9);padding:1px 6px;border-radius:5px;color:#374151}
+.scene .check{position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;background:var(--brand);color:#fff;display:none;place-items:center;font-size:12px}
+.scene.sel .check{display:grid}
+
+/* Layer rows */
+.layer{border:1px solid var(--line);border-radius:9px;padding:9px 11px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:.15s;background:#fff}
+.layer:hover{border-color:#c7d2fe}
+.layer.sel{border-color:var(--brand);background:var(--brand-soft)}
+.layer .thumb{width:34px;height:34px;border-radius:7px;flex:none;background:#f3f4f6;display:grid;place-items:center;font-size:16px}
+.layer .l-name{font-size:13px;font-weight:600}
+.layer .l-sub{font-size:11px;color:var(--muted)}
+.layer .lock{margin-left:auto;color:#c3c8d4}
+
+/* Progress */
+.progress{height:7px;background:var(--line-2);border-radius:5px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--brand);border-radius:5px;transition:width .4s}
+.progress i.green{background:var(--green)}
+.progress i.amber{background:var(--amber)}
+
+/* Canvas area */
+.canvas-wrap{background:
+  linear-gradient(45deg,#f1f2f5 25%,transparent 25%),linear-gradient(-45deg,#f1f2f5 25%,transparent 25%),
+  linear-gradient(45deg,transparent 75%,#f1f2f5 75%),linear-gradient(-45deg,transparent 75%,#f1f2f5 75%);
+  background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;
+  border:1px solid var(--line);border-radius:var(--radius);min-height:420px;display:grid;place-items:center;position:relative;overflow:hidden}
+
+/* Modal */
+.modal-back{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;place-items:center;z-index:50;padding:20px}
+.modal-back.open{display:grid}
+.modal{background:#fff;border-radius:14px;width:min(760px,94vw);max-height:90vh;overflow:auto;box-shadow:var(--shadow-lg);animation:pop .2s ease}
+@keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.modal-h{padding:16px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2}
+.modal-h h3{font-size:16px}
+.modal-b{padding:20px}
+.modal-f{padding:14px 20px;border-top:1px solid var(--line-2);display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:#fff}
+
+/* Segmented */
+.seg{display:inline-flex;background:var(--line-2);border-radius:9px;padding:3px;gap:2px}
+.seg button{padding:6px 13px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.active{background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+
+/* checklist */
+.checklist{list-style:none;padding:0;margin:0}
+.checklist li{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+.checklist li:last-child{border-bottom:0}
+.checklist .ck{width:18px;height:18px;border-radius:6px;flex:none;display:grid;place-items:center;font-size:11px;margin-top:1px}
+.checklist .ck.ok{background:var(--green-soft);color:var(--green)}
+.checklist .ck.warn{background:var(--amber-soft);color:var(--amber)}
+
+/* misc */
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.mono{font-variant-numeric:tabular-nums}
+.spacer{flex:1}
+.hr{border:0;border-top:1px solid var(--line-2);margin:14px 0}
+.notice{border-left:3px solid var(--amber);background:var(--amber-soft);padding:10px 13px;font-size:12.5px;color:#92400e;border-radius:0 8px 8px 0;margin-bottom:14px}
+.notice.blue{border-color:var(--blue);background:var(--blue-soft);color:#1e40af}
+.flex{display:flex;align-items:center;gap:10px}
+.two-col{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.stat{display:flex;gap:6px;align-items:baseline}
+.stat b{font-size:20px;font-weight:800}
+.stat span{font-size:11px;color:var(--muted)}
+
+.three-col{display:grid;grid-template-columns:240px 1fr 300px;gap:16px;align-items:start}
+.checklist .ck.fail{background:var(--red-soft);color:var(--red)}
+.checklist .ck.todo{background:#f3f4f6;color:var(--muted)}
+.notice.red{border-color:var(--red);background:var(--red-soft);color:#7f1d1d}
+.notice.green{border-color:var(--green);background:var(--green-soft);color:#14532d}
+.demo-bar{font-size:12px;color:#1e40af;background:var(--blue-soft);border:1px solid #bfdbfe;border-radius:9px;padding:8px 12px;margin-bottom:14px}
+.flow-step{border-radius:10px;padding:4px 2px}
+.flow-step:hover .node{border-color:var(--brand)}
+.prod-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-bottom:9px;background:#fff}
+.prod-row.sel{border-color:var(--brand);background:var(--brand-soft)}
+.prod-row .l-name{display:block;font-size:13px;font-weight:600}
+.prod-row .l-sub{display:block;font-size:11px;color:var(--muted)}
+button.scene:disabled{opacity:.5;cursor:not-allowed}
+.prod-row .pick{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left}
+.layer{width:100%;text-align:left}
+.kv-table td:first-child{color:var(--muted);white-space:nowrap;width:90px}
+/* 子链路 B：OCR 文字块框 */
+.ocr-box{fill:rgba(79,70,229,.08);stroke:var(--brand);stroke-width:1;stroke-dasharray:3 2;cursor:pointer}
+.ocr-box.sel{fill:rgba(79,70,229,.18);stroke-width:1.6;stroke-dasharray:none}
+.ocr-box.art{stroke:var(--amber);fill:rgba(180,83,9,.08)}
+/* 处理流水线 */
+.pipe{list-style:none;padding:0;margin:0;font-size:12.5px}
+.pipe li{display:flex;gap:8px;align-items:center;padding:5px 0}
+.pipe li .d{width:16px;height:16px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:10px;background:#f3f4f6;color:var(--muted)}
+.pipe li.ok .d{background:var(--green-soft);color:var(--green)}
+.pipe li.bad .d{background:var(--red-soft);color:var(--red)}
+.pipe li.run .d{background:var(--brand);color:#fff}
+/* 任务逐项表 */
+.items{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+.items .table td,.items .table th{padding:6px 8px;font-size:12px}
+/* toast */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1f2430;color:#fff;font-size:13px;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow-lg);z-index:80;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
+@media(max-width:1080px){
+  :root{--sidebar-w:200px}
+  .nav-item .tag{display:none}
+  .two-col,.three-col{grid-template-columns:1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+  .scene-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <a class="brand" href="#" onclick="return false">
+      <span class="brand-mark">视</span>
+      <span><b>电商视觉工作台</b><small>MVP 原型 · v0.1</small></span>
+    </a>
+    <nav class="nav" id="nav">
+      <div class="nav-group">总览</div>
+      <button class="nav-item active" data-page="overview">
+        <span class="ico">▦</span><span>工作台总览</span>
+      </button>
+      <div class="nav-group">制作链路</div>
+      <button class="nav-item" data-page="products">
+        <span class="ico">▤</span><span>商品档案</span><span class="tag">M1·M2</span>
+      </button>
+      <button class="nav-item" data-page="studio">
+        <span class="ico">✦</span><span>制作台</span><span class="tag">M3-M5·M9</span>
+      </button>
+      <button class="nav-item" data-page="canvas">
+        <span class="ico">✎</span><span>画布编辑器</span><span class="tag">M6</span>
+      </button>
+      <div class="nav-group">协作与交付</div>
+      <button class="nav-item" data-page="tasks">
+        <span class="ico">≡</span><span>任务中心</span><span class="tag">M7</span>
+      </button>
+      <button class="nav-item" data-page="assets">
+        <span class="ico">⤓</span><span>素材库 / 交付</span><span class="tag">M8</span>
+      </button>
+      <div class="nav-group">系统</div>
+      <button class="nav-item" data-page="settings">
+        <span class="ico">⚙</span><span>设置</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <span><span class="dot"></span>模型服务正常</span>
+      <div class="kv"><span>生图模型</span><span class="mono">img-gen-v1</span></div>
+      <div class="kv"><span>生视频模型</span><span class="mono">vid-gen-v1</span></div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb"><b id="crumb-title">工作台总览</b><span class="muted"> / 电商视觉工作台</span></div>
+      <div class="spacer"></div>
+      <div class="status">⏱ 单 SKU 目标 &lt; 30 分钟</div>
+      <div class="avatar">森</div>
+    </div>
+    <div class="content">
+
+      <!-- ============ PAGE: OVERVIEW ============ -->
+      <section class="page active" id="page-overview">
+        <div class="page-head">
+          <div>
+            <h1>电商视觉工作台<span class="badge">MVP 原型</span></h1>
+            <p>输入商品 → 输出可上架的一整套素材（图片 + 视频）。本原型覆盖 M1–M9 九个最小闭环功能。</p>
+          </div>
+          <button class="btn btn-primary" onclick="go('products')">＋ 新建商品</button>
+        </div>
+
+        <div class="demo-bar">原型说明：页面数据均为示例，但各页之间口径一致（KPI 与任务中心、版本与素材库同源计算），开发可直接按此理解数据关系。交互规则见 <span class="mono">docs/原型交互说明.md</span>。</div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-h"><h3>主流程 · 一条线走完</h3><span class="sub">点击步骤跳转到对应页面</span></div>
+          <div class="flow" id="flow"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-h"><h3>品类规则（MVP 只做 3 类）</h3><span class="sub">标品优先，服装留到 V1</span></div>
+            <div class="card-b">
+              <table class="table">
+                <thead><tr><th>品类</th><th>必填字段</th><th>推荐场景</th><th>生成后必查</th></tr></thead>
+                <tbody>
+                  <tr><td><b>美妆个护</b></td><td>容量 / 成分 / 适用说明 / 包装多角度</td><td>洁净白底、浴室、植物</td><td>瓶型、标签文字、净含量、Logo</td></tr>
+                  <tr><td><b>家居日用</b></td><td>尺寸 / 材质 / 颜色 / 安装方式</td><td>客厅、卧室、桌面</td><td>空间比例、结构、表面纹理</td></tr>
+                  <tr><td><b>3C 配件</b></td><td>型号 / 接口 / 兼容范围 / 尺寸</td><td>桌面、手持、接口特写</td><td>接口类型、孔位、产品比例</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>当前商品</h3><button class="btn btn-ghost btn-sm" onclick="go('products')">全部</button></div>
+            <div class="card-b" id="overview-products"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: PRODUCTS ============ -->
+      <section class="page" id="page-products">
+        <div class="page-head">
+          <div><h1>商品档案</h1><p>一次录入真实商品资料，供后续所有制作模块调用。商品事实只来自商家资料，AI 只整理不补全。</p></div>
+          <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-h">
+              <div class="flex"><h3>商品列表</h3><span class="pill gray" id="product-count"></span></div>
+              <div class="seg" id="product-filter" role="group" aria-label="按品类筛选">
+                <button class="active" data-v="all">全部</button><button data-v="beauty">美妆</button><button data-v="home">家居</button><button data-v="digital">3C</button>
+              </div>
+            </div>
+            <div class="card-b" id="product-list"></div>
+          </div>
+          <div class="card" id="product-detail">
+            <div class="card-h"><h3>商品详情</h3><span class="pill" id="pd-status"></span></div>
+            <div class="card-b" id="product-detail-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: STUDIO ============ -->
+      <section class="page" id="page-studio">
+        <div class="page-head">
+          <div><h1>制作台</h1><p>抠图白底 → 场景图 → 主图 → 短视频。商品用真实像素合成，场景才走生成。</p></div>
+          <div class="flex">
+            <label class="sr-only" for="studio-product">当前商品</label>
+            <select class="select" id="studio-product" style="width:auto"></select>
+            <div class="seg" id="studio-step" role="group" aria-label="制作步骤">
+              <button class="active" data-step="0">① 抠图白底</button>
+              <button data-step="1">② 场景图</button>
+              <button data-step="2">③ 主图</button>
+              <button data-step="3">④ 短视频</button>
+            </div>
+          </div>
+        </div>
+        <div id="studio-body"></div>
+      </section>
+
+      <!-- ============ PAGE: CANVAS ============ -->
+      <section class="page" id="page-canvas">
+        <div class="page-head">
+          <div><h1>画布编辑器</h1><p>让 AI 出的图可修改，支持最高频的「改价格 / 改错字」。</p></div>
+          <div class="flex">
+            <div class="seg" id="canvas-mode" role="group" aria-label="编辑方式">
+              <button class="active" data-v="layer">A · 图层编辑</button><button data-v="flat">B · 扁平图替换</button>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-undo" onclick="undo()">↶ 撤销</button>
+            <button class="btn btn-ghost btn-sm" id="btn-redo" onclick="redo()">↷ 重做</button>
+            <button class="btn btn-soft btn-sm" onclick="openVersionCompare()">版本对比</button>
+            <button class="btn btn-primary btn-sm" id="btn-save" onclick="saveVersion()">保存版本</button>
+          </div>
+        </div>
+        <div class="three-col">
+          <div class="card"><div class="card-h"><h3 id="left-title">图层</h3></div><div class="card-b" id="layer-list"></div></div>
+          <div class="card"><div class="card-h"><h3>画布</h3><span class="sub" id="canvas-sub"></span></div><div class="card-b"><div class="canvas-wrap" id="canvas-area"></div></div></div>
+          <div class="card"><div class="card-h"><h3 id="tools-title">图层属性</h3><span class="pill brand">M6</span></div><div class="card-b" id="canvas-tools"></div></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: TASKS ============ -->
+      <section class="page" id="page-tasks">
+        <div class="page-head">
+          <div><h1>任务中心</h1><p>批量出图有进度、有预算、失败能恢复。这里是 H2「单 SKU 成本」的唯一数据来源。</p></div>
+          <button class="btn btn-primary" onclick="openBatch()">＋ 新建批量任务</button>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-h"><h3>任务列表</h3><span class="sub" id="task-summary"></span></div>
+          <div class="card-b" id="task-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>成本明细 · 按 SKU 汇总</h3><span class="sub">含返工与重试 · 估算费 vs 实际费分开显示 · 总览 H2 由此表计算</span></div>
+          <div class="card-b"><table class="table" id="cost-table"></table></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: ASSETS ============ -->
+      <section class="page" id="page-assets">
+        <div class="page-head">
+          <div><h1>素材库 / 交付</h1><p>把候选稿变成可追溯的已确认素材，并按渠道分目录打包导出。</p></div>
+          <button class="btn btn-primary" onclick="toast('原型：将按下方清单打包 ZIP，目录按渠道划分')">⤓ 导出素材包（ZIP）</button>
+        </div>
+        <div class="two-col">
+          <div>
+            <div class="card" style="margin-bottom:16px">
+              <div class="card-h"><h3>版本与审核</h3><span class="sub">森序洁面乳 · 青绿 150ml · 淘宝主图</span></div>
+              <div class="card-b" id="version-list"></div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>变更留痕</h3><span class="sub">AuditLog · 原值 → 新值 → 操作人 → 时间</span></div>
+              <div class="card-b"><table class="table" id="audit-table"></table></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>导出清单</h3><span class="pill gray">按渠道分目录</span></div>
+            <div class="card-b" id="export-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: SETTINGS ============ -->
+      <section class="page" id="page-settings">
+        <div class="page-head"><div><h1>设置</h1><p>品牌基础与模型配置。MVP 单租户、单角色，不做权限矩阵。</p></div></div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-h"><h3>品牌基础</h3><span class="sub">Logo / 主色 / 字体</span></div>
+            <div class="card-b">
+              <div class="field"><label>品牌 Logo</label>
+                <div class="flex"><span class="brand-mark" style="width:46px;height:46px;font-size:22px">森</span><button class="btn btn-ghost btn-sm">上传替换</button></div>
+              </div>
+              <div class="row cols-3">
+                <div class="field"><label>品牌主色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#355845;border:1px solid var(--line)"></span><span class="mono small">#355845</span></div></div>
+                <div class="field"><label>辅助色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#f5f3e9;border:1px solid var(--line)"></span><span class="mono small">#F5F3E9</span></div></div>
+                <div class="field"><label>标题字体</label><input class="input" value="思源黑体 / Source Han Sans"></div>
+              </div>
+              <div class="field"><label>禁用词（发布前拦截）</label>
+                <div class="flex" style="flex-wrap:wrap"><span class="pill red">最顶级</span><span class="pill red">第一</span><span class="pill red">国家级</span><span class="pill red">治疗</span><span class="pill gray">＋ 添加</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>模型配置</h3><span class="sub">MVP 1 个生图 + 1 个生视频，不做路由</span></div>
+            <div class="card-b">
+              <div class="field"><label for="set-img">生图模型</label><select class="select" id="set-img" disabled><option>img-gen-v1（MVP 固定，不做路由）</option></select></div>
+              <div class="field"><label for="set-vid">生视频模型</label><select class="select" id="set-vid" disabled><option>vid-gen-v1（MVP 固定，不做路由）</option></select></div>
+              <hr class="hr">
+              <div class="field"><label>一致性校验（L3 五项，MVP 只自动做 2 项）</label>
+                <table class="table">
+                  <thead><tr><th>检测项</th><th>方法</th><th>打回阈值</th><th>MVP</th></tr></thead>
+                  <tbody>
+                    <tr><td>整体相似度</td><td>CLIP / DINOv2 余弦</td><td>&lt; 0.92</td><td><span class="pill green">自动</span></td></tr>
+                    <tr><td>Logo / 包装文字</td><td>OCR 字符比对</td><td>任一字符不一致</td><td><span class="pill green">自动</span></td></tr>
+                    <tr><td>主色偏移</td><td>商品区域 ΔE</td><td>ΔE &gt; 5</td><td><span class="pill gray">人工复核</span></td></tr>
+                    <tr><td>轮廓形变</td><td>分割 mask IoU</td><td>IoU &lt; 0.9</td><td><span class="pill gray">人工复核</span></td></tr>
+                    <tr><td>结构异常</td><td>多模态判新增元素</td><td>判定为是</td><td><span class="pill gray">人工复核</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="notice blue">阈值取自方案文档 §6.3 的建议值，需在 P0 技术验证中用真实 SKU 校准。人工复核项 V1 再自动化。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-back" id="product-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <div class="modal-h"><h3 id="pm-title">新建商品</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('product-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="notice">商品事实（材质 / 规格 / 认证 / 成分）只能来自商家资料，AI 只做整理，不做补全。AI 提取的值必须人工确认后才算录入。</div>
+      <div class="row cols-2">
+        <div class="field"><label for="pm-name">商品名称<span class="req">*</span></label><input class="input" id="pm-name" placeholder="例如：森序 氨基酸洁面乳"></div>
+        <div class="field"><label for="pm-cat">品类<span class="req">*</span></label>
+          <select class="select" id="pm-cat">
+            <option value="beauty" selected>美妆个护</option>
+            <option value="home">家居日用</option>
+            <option value="digital">3C 配件</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label for="pm-pitch">卖点</label><textarea class="textarea" id="pm-pitch" placeholder="1–2 句核心卖点，用于主图与视频文案"></textarea></div>
+      <div class="field">
+        <div class="flex" style="justify-content:space-between;margin-bottom:5px">
+          <label style="margin:0">品类必填字段（随品类切换）</label>
+          <button class="btn btn-soft btn-sm" onclick="aiExtract()">从原图 / 资料 AI 辅助提取</button>
+        </div>
+        <ul class="checklist" id="pm-fields"></ul>
+      </div>
+      <div class="field"><label>SKU 列表</label>
+        <table class="table"><thead><tr><th>颜色</th><th>规格</th><th>售价</th></tr></thead>
+        <tbody><tr><td class="muted">—</td><td class="muted">保存后在详情页补充</td><td class="muted">—</td></tr></tbody></table>
+      </div>
+      <div class="notice red" id="pm-error" hidden></div>
+    </div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('product-modal')">取消</button><button class="btn btn-primary" onclick="saveNewProduct()">保存商品主档</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="batch-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bm-title">
+    <div class="modal-h"><h3 id="bm-title">新建批量任务</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('batch-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><label>商品 / SKU 清单</label><ul class="checklist" id="bm-skus"></ul></div>
+      <div class="row cols-2">
+        <div class="field"><label for="bm-tpl">模板</label><select class="select" id="bm-tpl" onchange="renderBatchEstimate()"></select></div>
+        <div class="field"><label for="bm-ch">目标渠道</label><select class="select" id="bm-ch"><option>淘宝 + 抖音 + Amazon</option><option>仅淘宝</option></select></div>
+      </div>
+      <div class="notice red" id="bm-block" hidden></div>
+      <hr class="hr">
+      <div class="flex" style="justify-content:space-between" id="bm-estimate"></div>
+      <p class="small muted" style="margin-top:8px">估算按模板单价计；执行中的重试会计入实际费，任务中心分开显示。</p>
+    </div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('batch-modal')">取消</button><button class="btn btn-primary" id="bm-submit" onclick="submitBatch()">确认提交</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="version-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vm-title">
+    <div class="modal-h"><h3 id="vm-title">版本对比</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('version-modal')">✕</button></div>
+    <div class="modal-b" id="vm-body"></div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('version-modal')">关闭</button></div>
+  </div>
+</div>
+
+<!-- 价格类改动强制二次确认（M6 关键规则） -->
+<div class="modal-back" id="price-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="prm-title" style="width:min(480px,94vw)">
+    <div class="modal-h"><h3 id="prm-title">确认修改价格</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('price-modal')">✕</button></div>
+    <div class="modal-b" id="prm-body"></div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('price-modal')">取消</button><button class="btn btn-primary" id="prm-ok" disabled>确认修改</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============ 通用工具 ============ */
+const $=id=>document.getElementById(id);
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+const yuan=n=>'¥'+n.toFixed(1);
+const sum=(arr,k)=>arr.reduce((s,x)=>s+x[k],0);
+const avgOf=(rows,k)=>rows.reduce((s,[,r])=>s+r[k],0)/rows.length;
+function now(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+const OPERATOR='运营·小林';
+let toastTimer;
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
+/* SVG 渐变 id 每次插入都唯一：同一 id 重复出现时，浏览器可能引用到隐藏页面里的定义导致填充丢失 */
+let gid=0;const nid=p=>p+(++gid);
+
+/* 分段按钮：所有 .seg 统一切换选中态；需要业务逻辑的再用 onSeg 单独监听 */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.seg button');if(!b||b.disabled)return;
+  b.parentElement.querySelectorAll('button').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',x===b);});
+});
+function onSeg(id,fn){$(id).addEventListener('click',e=>{const b=e.target.closest('button');if(b)fn(b.dataset.v,b);});}
+function seg(opts,active=0){return `<div class="seg" role="group">${opts.map((o,i)=>`<button type="button" class="${i===active?'active':''}" aria-pressed="${i===active}">${o}</button>`).join('')}</div>`;}
+
+/* 弹窗：打开时聚焦首个控件，Esc / 点遮罩关闭，关闭后焦点回到触发处 */
+let lastFocus=null;
+function openModal(id){lastFocus=document.activeElement;$(id).classList.add('open');const f=$(id).querySelector('.modal-b input,.modal-b select,.modal-b textarea,.modal-b button');(f||$(id).querySelector('button')).focus();}
+function closeModal(id){$(id).classList.remove('open');if(lastFocus&&document.contains(lastFocus))lastFocus.focus();}
+document.querySelectorAll('.modal-back').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id);}));
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;const open=[...document.querySelectorAll('.modal-back.open')].pop();if(open)closeModal(open.id);});
+
+/* ============ 示例数据（各页共用同一份，保证口径一致） ============ */
+const CATS={
+  beauty:{name:'美妆个护',icon:'🧴',subject:'bottle',fields:['容量','成分','适用说明','包装多角度图'],
+    scenes:[['white','洁净白底'],['bath','浴室场景'],['plant','植物场景']],checks:['瓶型','标签文字','净含量','Logo']},
+  home:{name:'家居日用',icon:'🛏',subject:'bedding',fields:['尺寸','材质','颜色','安装方式'],
+    scenes:[['living','客厅场景'],['bedroom','卧室场景'],['desk','桌面场景']],checks:['空间比例','结构','表面纹理']},
+  digital:{name:'3C 配件',icon:'🔌',subject:'cable',fields:['型号','接口','兼容范围','尺寸'],
+    scenes:[['desk','桌面场景'],['hand','手持展示'],['closeup','接口特写']],checks:['接口类型','孔位','产品比例']},
+};
+const SCENE_LABEL={white:'洁净白底',bath:'浴室',plant:'植物',living:'客厅',bedroom:'卧室',desk:'桌面',hand:'手持',closeup:'接口特写'};
+
+/* 字段来源：human 人工录入 / ai 提取待确认 / missing 缺失。只有全部为 human 才允许生成 */
+const products=[
+  {id:'p1',name:'森序 氨基酸洁面乳',short:'氨基酸洁面乳',cat:'beauty',pitch:'温和氨基酸配方，绵密泡沫，敏感肌可用。',affected:0,
+    fields:{'容量':{v:'150ml',src:'human'},'成分':{v:'氨基酸表活（以备案成分表为准）',src:'human'},'适用说明':{v:'早晚洁面，避开眼周',src:'human'},'包装多角度图':{v:'5 张',src:'human'}},
+    skus:[{id:'s11',color:'青绿色',spec:'150ml',price:129},{id:'s12',color:'米白色',spec:'150ml',price:129},{id:'s13',color:'青绿色',spec:'50ml 旅行装',price:59}]},
+  {id:'p2',name:'云柔 纯棉四件套',short:'纯棉四件套',cat:'home',pitch:'100% 长绒棉，亲肤透气，四季可用。',affected:0,
+    fields:{'尺寸':{v:'1.8m / 1.5m 床',src:'human'},'材质':{v:'100% 棉（以检测报告为准）',src:'human'},'颜色':{v:'雾蓝 / 燕麦',src:'human'},'安装方式':{v:'不适用（床品）',src:'human'}},
+    skus:[{id:'s21',color:'雾蓝',spec:'1.8m 床',price:399},{id:'s22',color:'燕麦',spec:'1.5m 床',price:349}]},
+  {id:'p3',name:'Type-C 快充数据线',short:'Type-C 快充线',cat:'digital',pitch:'100W 快充，弯头设计，边充边玩不挡手。',affected:0,
+    fields:{'型号':{v:'TC-100W-1M',src:'human'},'接口':{v:'USB-C to USB-C',src:'human'},'兼容范围':{v:'支持 PD 协议设备',src:'human'},'尺寸':{v:'1m',src:'human'}},
+    skus:[{id:'s31',color:'深空灰',spec:'1m',price:29}]},
+  {id:'p4',name:'木语 实木置物架',short:'实木置物架',cat:'home',pitch:'实木框架，免打孔安装。',affected:0,
+    fields:{'尺寸':{v:'60×30×120cm',src:'human'},'材质':{v:'橡胶木',src:'ai'},'颜色':{v:'原木色',src:'human'},'安装方式':{v:'',src:'missing'}},
+    skus:[{id:'s41',color:'原木色',spec:'四层',price:199}]},
+];
+const pById=id=>products.find(p=>p.id===id);
+function pStatus(p){
+  const s=Object.values(p.fields).map(f=>f.src);
+  if(s.includes('missing'))return{text:'待补字段',cls:'amber'};
+  if(s.includes('ai'))return{text:'待确认',cls:'amber'};
+  return{text:'档案完整',cls:'green'};
+}
+const canGenerate=p=>pStatus(p).text==='档案完整';
+function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid);if(s)return{p,s,label:`${p.short} · ${s.color} ${s.spec}`};}return null;}
+
+/* 任务按「SKU × 产出」逐项记录状态与费用；失败 / 取消项不计实际费，重试成功才计 */
+const TEMPLATES={
+  full:{name:'全套 · 8 图 + 15s 视频',outs:[['8 图',4.2],['15s 视频',5.0]]},
+  img8:{name:'8 图（主图 3 + 场景 5）',outs:[['8 图',4.2]]},
+  main3:{name:'仅主图 3 张',outs:[['主图 3 张',1.6]]},
+};
+const jobs=[
+  {id:'J-1021-01',name:'森序洁面乳 · 全套',created:'10-21 09:10',items:[
+    {sku:'s11',out:'8 图',status:'成功',est:4.2,act:4.6},
+    {sku:'s11',out:'15s 视频',status:'成功',est:5.0,act:6.2},
+    {sku:'s12',out:'8 图',status:'成功',est:4.2,act:4.4},
+    {sku:'s12',out:'15s 视频',status:'成功',est:5.0,act:5.4},
+    {sku:'s13',out:'8 图',status:'执行中',est:4.2,act:0},
+    {sku:'s13',out:'15s 视频',status:'等待',est:5.0,act:0}]},
+  {id:'J-1021-02',name:'森序洁面乳 · 场景图重做（换植物背景）',created:'10-21 10:20',items:[
+    {sku:'s11',out:'场景图 2 张',status:'成功',est:1.0,act:1.0},
+    {sku:'s12',out:'场景图 2 张',status:'已取消',est:1.0,act:0}]},
+  {id:'J-1021-03',name:'云柔四件套 · 8 图',created:'10-21 11:02',items:[
+    {sku:'s21',out:'8 图',status:'成功',est:4.2,act:4.2},
+    {sku:'s22',out:'8 图',status:'成功',est:4.2,act:4.3}]},
+  {id:'J-1021-04',name:'快充线 · 全套',created:'10-21 13:40',items:[
+    {sku:'s31',out:'8 图',status:'失败',est:4.2,act:0,err:'一致性校验打回：接口孔位 OCR 比对不通过'},
+    {sku:'s31',out:'15s 视频',status:'等待',est:5.0,act:0}]},
+];
+const ACTIVE=['执行中','等待'];
+function jobStatus(j){
+  const s=j.items.map(i=>i.status);
+  if(s.some(x=>ACTIVE.includes(x)))return s.includes('失败')?'部分失败':'执行中';
+  if(s.includes('失败'))return s.includes('成功')?'部分失败':'失败';
+  if(s.every(x=>x==='已取消'))return'已取消';
+  return'成功';
+}
+/* 示例：交付时长（分钟，含人工确认）与一次通过样本 */
+const DELIVERY_MIN={s11:24,s12:21};
+const FIRST_PASS={pass:17,total:25};
+
+/* 版本（森序 · 青绿 150ml · 淘宝主图）。同一时刻只有一个「已确认」作为交付版本 */
+const versions=[
+  {v:1,price:129,title:'氨基酸洁面乳',bg:'bath',status:'已过期',note:'初版',who:OPERATOR,at:'10-20 18:40'},
+  {v:2,price:129,title:'氨基酸洁面乳',bg:'plant',status:'已确认',note:'背景改为植物场景（局部重做）',who:OPERATOR,at:'10-21 11:05'},
+];
+const audit=[
+  {obj:'主图 v2',op:'局部重做 · 背景',from:'浴室',to:'植物',who:OPERATOR,at:'10-21 11:05'},
+  {obj:'主图 v2',op:'确认交付',from:'v1',to:'v2',who:OPERATOR,at:'10-21 11:20'},
+];
+
+/* ============ SVG 占位图 ============ */
+/* 商品主体（不含背景）：用于透明底、场景合成，体现「真实像素合成」 */
+function subjectShape(type){
+  if(type==='bottle')return `<rect x="52" y="20" width="24" height="16" rx="3" fill="#2f4a3c"/><rect x="58" y="36" width="12" height="12" rx="2" fill="#7fa58c"/>
+    <rect x="36" y="46" width="56" height="122" rx="14" fill="#4f7d63"/><rect x="42" y="52" width="8" height="104" rx="4" fill="#fff" opacity=".85"/>
+    <rect x="44" y="82" width="40" height="42" rx="2" fill="#f5f3e9"/>
+    <text x="64" y="100" font-size="10" fill="#2f4a3c" font-weight="700" text-anchor="middle" font-family="sans-serif">MORI</text>
+    <text x="64" y="114" font-size="7" fill="#5b6b60" text-anchor="middle" font-family="sans-serif">150 ml</text>`;
+  if(type==='bedding')return `<rect x="18" y="112" width="92" height="22" rx="5" fill="#9fb3c8"/><rect x="22" y="90" width="84" height="22" rx="5" fill="#c9d6e3"/>
+    <rect x="26" y="68" width="76" height="22" rx="5" fill="#e3e9f0"/><path d="M26 79 h76" stroke="#b5c3d1" stroke-width="1.5"/><rect x="40" y="134" width="48" height="4" rx="2" fill="#7d93aa"/>`;
+  return `<path d="M30 140 C30 70 98 70 98 110 C98 140 60 140 60 110" fill="none" stroke="#3a3f4a" stroke-width="6" stroke-linecap="round"/>
+    <rect x="22" y="138" width="16" height="26" rx="4" fill="#5b616d"/><rect x="26" y="160" width="8" height="8" rx="1.5" fill="#c8cdd6"/>
+    <rect x="52" y="86" width="16" height="26" rx="4" fill="#5b616d" transform="rotate(-90 60 99)"/>`;
+}
+/* mode: raw 原图（带拍摄背景） / cut 透明底 / white 白底 */
+function productSVG(type,mode='raw'){
+  const g=nid('g');
+  const bg=mode==='raw'?`<defs><linearGradient id="${g}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8ecef"/><stop offset="1" stop-color="#c9d1d8"/></linearGradient></defs><rect width="128" height="180" fill="url(#${g})"/>`
+    :mode==='white'?`<rect width="128" height="180" fill="#fff"/><ellipse cx="64" cy="170" rx="38" ry="5" fill="#000" opacity=".12"/>`:'';
+  return `<svg viewBox="0 0 128 180" width="100%" height="100%" aria-hidden="true">${bg}${subjectShape(type)}</svg>`;
+}
+/* 场景背景（只生成环境，不含商品） */
+function sceneSVG(kind){
+  const c={white:['#ffffff','#f1f3f5','#d1d5db'],bath:['#e4eef6','#c3d7e8','#4a78a8'],plant:['#dff1e6','#b7d9c6','#4f8a68'],living:['#f4ead9','#e2cdad','#b08a5a'],
+    bedroom:['#ece8f4','#d6cfe6','#7c6fa8'],desk:['#eef0f3','#d8dde4','#6b7280'],hand:['#e4eef6','#c3d7e8','#4a78a8'],closeup:['#eef0f3','#d8dde4','#6b7280']}[kind];
+  const body={
+    white:`<rect y="56" width="120" height="22" fill="${c[1]}"/>`,
+    bath:`<rect y="56" width="120" height="22" fill="${c[1]}"/><rect x="12" y="10" width="40" height="40" rx="6" fill="#fff" opacity=".8"/><rect x="14" y="14" width="36" height="32" rx="4" fill="#dceef4"/>`,
+    plant:`<path d="M10 78 Q16 40 38 26 M22 78 Q26 46 44 36 M96 78 Q98 44 112 30" stroke="${c[2]}" stroke-width="3" fill="none"/><rect y="62" width="120" height="16" fill="${c[1]}"/>`,
+    living:`<rect y="52" width="120" height="26" fill="${c[1]}"/><rect x="6" y="28" width="30" height="26" rx="3" fill="#c9a06a"/><rect x="88" y="14" width="26" height="30" rx="4" fill="#fff" opacity=".85"/>`,
+    bedroom:`<rect y="54" width="120" height="24" fill="${c[1]}"/><rect x="8" y="22" width="22" height="32" rx="3" fill="${c[2]}" opacity=".35"/><circle cx="104" cy="22" r="7" fill="#f2d58a"/>`,
+    desk:`<rect y="50" width="120" height="28" fill="${c[1]}"/><rect x="6" y="30" width="30" height="20" rx="2" fill="#3a3f4a" opacity=".7"/><rect x="100" y="34" width="10" height="16" rx="2" fill="#c9a06a"/>`,
+    hand:`<rect y="56" width="120" height="22" fill="${c[1]}"/><circle cx="104" cy="20" r="12" fill="${c[2]}" opacity=".25"/>`,
+    closeup:`<circle cx="60" cy="40" r="44" fill="${c[1]}"/>`,
+  }[kind];
+  return `<svg viewBox="0 0 120 78" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="120" height="78" fill="${c[0]}"/>${body}</svg>`;
+}
+/* 场景合成：背景（生成）+ 商品主体（真实像素），位置/比例可调 */
+function compositeSVG(kind,subject,pos={x:50,y:52,w:34}){
+  return `<span style="position:absolute;inset:0">${sceneSVG(kind)}</span>
+    <span style="position:absolute;left:${pos.x}%;top:${pos.y}%;width:${pos.w}%;transform:translate(-50%,-50%);display:block">${productSVG(subject,'cut')}</span>`;
+}
+/* 主图模板：文字始终是独立图层（这里用独立 text 元素示意） */
+function heroSVG(subject,{layout='center',title='',tag='',price=0,oldPrice=0,bg='#eef4f0',band='#355845',noText=false}={}){
+  const sub=(x,y,w)=>`<svg x="${x}" y="${y}" width="${w}" height="${w*180/128}" viewBox="0 0 128 180">${subjectShape(subject)}</svg>`;
+  const T=(x,y,s,fill,txt,anchor='middle',w=700)=>`<text x="${x}" y="${y}" font-size="${s}" fill="${fill}" font-weight="${w}" text-anchor="${anchor}" font-family="sans-serif">${esc(txt)}</text>`;
+  let inner;
+  if(noText) inner=`<rect width="120" height="160" fill="#fff"/>${sub(22,14,76)}`;
+  else if(layout==='left') inner=`<rect width="120" height="160" fill="${bg}"/>${sub(52,26,64)}${T(8,46,10,band,title,'start',800)}${T(8,64,7,'#5b6b60',tag,'start',400)}<rect x="6" y="118" width="54" height="26" rx="6" fill="${band}"/>${T(33,136,13,'#ffd97a','¥'+price)}`;
+  else if(layout==='patch') inner=`<rect width="120" height="160" fill="${bg}"/>${sub(24,16,72)}<rect x="70" y="10" width="44" height="18" rx="9" fill="#d97706"/>${T(92,22,8,'#fff',tag)}<rect x="0" y="128" width="120" height="32" fill="${band}"/>${T(60,149,13,'#ffd97a','¥'+price)}`;
+  else inner=`<rect width="120" height="160" fill="${bg}"/><circle cx="60" cy="58" r="34" fill="#fff" opacity=".5"/>${sub(36,8,48)}<rect y="116" width="120" height="44" fill="${band}"/>${T(60,130,10,'#fff',title)}${T(60,148,14,'#ffd97a','¥'+price,'middle',800)}`;
+  const old=(!noText&&oldPrice)?`<text x="112" y="148" font-size="8" fill="#cbd5cf" text-decoration="line-through" text-anchor="end" font-family="sans-serif">¥${oldPrice}</text>`:'';
+  return `<svg viewBox="0 0 120 160" width="100%" height="100%" aria-hidden="true">${inner}${old}</svg>`;
+}
+const checker='background-color:#fff;background-image:conic-gradient(#e5e7eb 25%,#fff 0 50%,#e5e7eb 0 75%,#fff 0);background-size:12px 12px';
+const pitchTag=p=>{const s=p.pitch.split(/[，。,]/).filter(Boolean);return(s[2]||s[1]||s[0]||'').slice(0,6);};
+
+/* ============ 导航 ============ */
+const TITLES={overview:'工作台总览',products:'商品档案',studio:'制作台',canvas:'画布编辑器',tasks:'任务中心',assets:'素材库 / 交付',settings:'设置'};
+$('nav').addEventListener('click',e=>{const b=e.target.closest('.nav-item');if(b)go(b.dataset.page);});
+function go(page){
+  document.querySelectorAll('.nav-item').forEach(b=>{const on=b.dataset.page===page;b.classList.toggle('active',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');});
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+page));
+  $('crumb-title').textContent=TITLES[page];
+  document.querySelector('.content').scrollTop=0;
+}
+
+/* ============ 总览：主流程 ============ */
+const FLOW=[['📦','新建商品','products'],['📝','填档案','products'],['✂️','抠图白底','studio',0],['🌿','场景图','studio',1],['🖼','主图','studio',2],
+  ['✎','画布调整','canvas'],['⚙','批量任务','tasks'],['✔','审核交付','assets'],['🎬','视频（可选）','studio',3]];
+function renderFlow(){
+  $('flow').innerHTML=FLOW.map((f,i)=>`<button type="button" class="flow-step" data-i="${i}"><span class="node" aria-hidden="true">${f[0]}</span><b>${f[1]}</b></button>`+(i<FLOW.length-1?'<span class="flow-arrow" aria-hidden="true">→</span>':'')).join('');
+}
+$('flow').addEventListener('click',e=>{const b=e.target.closest('.flow-step');if(!b)return;const f=FLOW[+b.dataset.i];if(f[2]==='studio')setStudioStep(f[3]);go(f[2]);});
+
+/* ============ 总览：KPI（与任务中心同源计算） ============ */
+/* 按 SKU 汇总所有任务（含返工、重试），已取消项不计入 */
+function skuCostRows(){
+  const m={};
+  jobs.forEach(j=>j.items.forEach(it=>{
+    if(it.status==='已取消')return;
+    const r=m[it.sku]||(m[it.sku]={est:0,act:0,outs:{}});
+    r.est+=it.est;r.act+=it.act;r.outs[it.out]=it.status;
+  }));
+  return Object.entries(m).map(([sku,r])=>[sku,{...r,full:r.outs['8 图']==='成功'&&r.outs['15s 视频']==='成功'}]);
+}
+function renderKPIs(){
+  const full=skuCostRows().filter(([,r])=>r.full);
+  const h2=full.length?avgOf(full,'act'):NaN, h2e=full.length?avgOf(full,'est'):NaN;
+  const mins=full.map(([s])=>DELIVERY_MIN[s]).filter(Boolean);
+  const h3=mins.length?mins.reduce((a,b)=>a+b,0)/mins.length:NaN;
+  const h1=FIRST_PASS.pass/FIRST_PASS.total*100;
+  /* scale：进度条满格对应的数值；dir：ge 越大越好 / le 越小越好 */
+  const K=[
+    {id:'H1',label:'一次通过率',val:h1,fmt:v=>v.toFixed(0)+'%',target:60,tfmt:'≥60%',dir:'ge',scale:100,note:`示例样本 ${FIRST_PASS.pass}/${FIRST_PASS.total} 张素材无需返修`},
+    {id:'H2',label:'单 SKU 全套成本',val:h2,fmt:v=>yuan(v),target:15,tfmt:'≤¥15',dir:'le',scale:20,note:full.length?`已完成全套 ${full.length} 个 SKU 均值 · 估算 ${yuan(h2e)} / 实际 ${yuan(h2)}`:'暂无完成全套的 SKU'},
+    {id:'H3',label:'单 SKU 交付时长',val:h3,fmt:v=>v.toFixed(0)+' min',target:30,tfmt:'≤30 min',dir:'le',scale:40,note:`含人工确认 · 同 H2 口径 ${mins.length} 个 SKU 均值`},
+    {id:'H4',label:'商家愿意上架比例',val:NaN,fmt:()=>'—',target:80,tfmt:'≥80%',dir:'ge',scale:100,note:'P5 真实跑批（20 SKU）时采集'},
+  ];
+  $('kpis').innerHTML=K.map(k=>{
+    const has=!isNaN(k.val), ok=has&&(k.dir==='ge'?k.val>=k.target:k.val<=k.target);
+    const st=!has?['gray','待采集']:ok?['green','达标']:['red','未达标'];
+    const w=has?Math.min(100,k.val/k.scale*100):0, mark=k.target/k.scale*100;
+    return `<div class="kpi">
+      <div class="k-top"><span class="k-label">${k.id} · ${k.label}</span><span class="pill ${st[0]}">${st[1]}</span></div>
+      <div class="k-value">${has?k.fmt(k.val):'—'}<small>/ ${k.tfmt}</small></div>
+      <div class="k-bar" role="img" aria-label="${k.label} ${has?k.fmt(k.val):'待采集'}，阈值 ${k.tfmt}"><i class="${has?(ok?'pass':'fail'):''}" style="width:${w}%"></i><em style="left:${mark}%"></em></div>
+      <div class="k-note">${k.note}</div></div>`;
+  }).join('');
+}
+function renderOverviewProducts(){
+  $('overview-products').innerHTML=products.map(p=>{const st=pStatus(p);return `
+    <button type="button" class="layer" style="margin-bottom:9px" onclick="showProduct('${p.id}');go('products')">
+      <span class="thumb" aria-hidden="true">${CATS[p.cat].icon}</span>
+      <span style="flex:1;min-width:0"><span class="l-name" style="display:block">${esc(p.name)}</span><span class="l-sub" style="display:block">${CATS[p.cat].name} · ${p.skus.length} 个 SKU</span></span>
+      <span class="pill ${st.cls}">${st.text}</span></button>`;}).join('');
+}
+
+/* ============ 商品档案 ============ */
+let curPid='p1', productFilter='all';
+onSeg('product-filter',v=>{productFilter=v;renderProductList();});
+function renderProductList(){
+  const list=products.filter(p=>productFilter==='all'||p.cat===productFilter);
+  $('product-count').textContent=list.length+' 个';
+  $('product-list').innerHTML=list.length?list.map(p=>{const st=pStatus(p),n=assetCount(p.id);return `
+    <div class="prod-row ${p.id===curPid?'sel':''}">
+      <button type="button" class="pick" onclick="showProduct('${p.id}')" aria-pressed="${p.id===curPid}">
+        <span class="thumb" style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex:none">${productSVG(CATS[p.cat].subject)}</span>
+        <span style="min-width:0"><span class="l-name">${esc(p.name)}</span><span class="l-sub">${CATS[p.cat].name} · ${p.skus.length} 个 SKU · ${n?`已产出素材 ${n} 份`:'暂无素材'}</span></span>
+      </button>
+      ${p.affected?`<span class="pill red">${p.affected} 份素材受影响</span>`:''}
+      <span class="pill ${st.cls}">${st.text}</span>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="enterStudio('${p.id}')">进入制作</button>
+    </div>`;}).join(''):'<p class="muted small">该品类暂无商品</p>';
+}
+/* 已产出素材份数：任务中成功的产出项 */
+const assetCount=pid=>jobs.reduce((n,j)=>n+j.items.filter(i=>i.status==='成功'&&skuInfo(i.sku).p.id===pid).length,0);
+function showProduct(pid){curPid=pid;renderProductList();renderProductDetail();}
+const SRC_TAG={human:'<span class="src-tag human">人工录入</span>',ai:'<span class="src-tag ai">AI 提取 · 待确认</span>',missing:'<span class="pill amber">缺失</span>'};
+function renderProductDetail(){
+  const p=pById(curPid), st=pStatus(p), n=assetCount(p.id);
+  $('pd-status').textContent=st.text;$('pd-status').className='pill '+st.cls;
+  const miss=Object.entries(p.fields).filter(([,f])=>f.src!=='human').map(([k])=>k);
+  $('product-detail-body').innerHTML=`
+    <div class="field"><label for="pd-name">商品名称</label><input class="input" id="pd-name" value="${esc(p.name)}" data-k="name"></div>
+    <div class="field"><label>品类</label><input class="input" value="${CATS[p.cat].name}" readonly aria-readonly="true"></div>
+    <div class="field"><label for="pd-pitch">卖点</label><textarea class="textarea" id="pd-pitch" data-k="pitch">${esc(p.pitch)}</textarea></div>
+    <div class="field"><label>品类必填字段 · 每项标注来源</label>
+      <table class="table kv-table"><tbody>${Object.entries(p.fields).map(([k,f])=>`<tr>
+        <td>${k}<span class="req" style="color:var(--red)">*</span></td>
+        <td><input class="input" value="${esc(f.v)}" data-f="${esc(k)}" aria-label="${esc(k)}" placeholder="${f.src==='missing'?'需商家提供，不允许空值':''}"></td>
+        <td style="white-space:nowrap">${SRC_TAG[f.src]}${f.src==='ai'?` <button type="button" class="btn btn-soft btn-sm" onclick="confirmField('${esc(k)}')">确认</button>`:''}</td></tr>`).join('')}</tbody></table>
+    </div>
+    <div class="field"><label>SKU 列表</label>
+      <table class="table"><thead><tr><th>颜色</th><th>规格</th><th>售价</th></tr></thead>
+      <tbody>${p.skus.map(s=>`<tr><td>${esc(s.color)}</td><td>${esc(s.spec)}</td><td>¥${s.price}</td></tr>`).join('')}</tbody></table>
+    </div>
+    ${miss.length?`<div class="notice">待处理字段：${miss.join('、')}。补齐并人工确认前，场景图 / 主图 / 视频生成会被阻断，不允许空值静默通过。</div>`:''}
+    <div class="notice red" id="pd-impact" hidden>修改商品资料后，已引用它的 ${n} 份素材将被标记「受影响」，需重新校验后才能交付。</div>
+    <div class="flex" style="justify-content:flex-end"><button type="button" class="btn btn-primary btn-sm" id="pd-save" disabled onclick="saveProduct()">保存修改</button></div>`;
+  $('product-detail-body').oninput=()=>{$('pd-save').disabled=false;$('pd-impact').hidden=!n;};
+}
+function saveProduct(){
+  const p=pById(curPid), body=$('product-detail-body'), changes=[];
+  body.querySelectorAll('[data-k]').forEach(el=>{const k=el.dataset.k,v=el.value.trim();if(v!==p[k]){changes.push([k==='name'?'名称':'卖点',p[k],v]);p[k]=v;}});
+  body.querySelectorAll('[data-f]').forEach(el=>{const f=p.fields[el.dataset.f],v=el.value.trim();if(v!==f.v){changes.push([el.dataset.f,f.v||'（空）',v||'（空）']);f.v=v;f.src=v?'human':'missing';}});
+  if(!changes.length){toast('没有改动');return;}
+  changes.forEach(([k,a,b])=>audit.push({obj:p.short,op:'修改商品资料 · '+k,from:a,to:b,who:OPERATOR,at:now()}));
+  const n=assetCount(p.id);if(n)p.affected=n;
+  refreshAll();toast(n?`已保存，${n} 份素材标记为受影响`:'已保存');
+}
+function confirmField(k){
+  const p=pById(curPid), f=p.fields[k];
+  f.src='human';audit.push({obj:p.short,op:'确认 AI 提取字段 · '+k,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});
+  refreshAll();
+}
+
+/* ============ 新建商品弹窗 ============ */
+let draft={};
+const AI_SAMPLE={
+  beauty:{'容量':'150ml','成分':'氨基酸表活'},
+  home:{'尺寸':'200×230cm','颜色':'雾蓝'},
+  digital:{'接口':'USB-C','尺寸':'1m'},
+};
+function renderNewProductFields(){
+  const cat=$('pm-cat').value;
+  $('pm-fields').innerHTML=CATS[cat].fields.map(f=>{
+    const d=draft[f]||{v:'',src:'missing'};
+    const ck=d.src==='human'?['ok','✓']:d.src==='ai'?['warn','!']:['todo','·'];
+    return `<li><span class="ck ${ck[0]}" aria-hidden="true">${ck[1]}</span><span style="width:96px;flex:none">${f}</span>
+      <input class="input" style="flex:1" data-f="${f}" aria-label="${f}" value="${esc(d.v)}" placeholder="待填，来自商家资料">
+      ${d.src==='ai'?`<span class="src-tag ai">AI 提取 · 待确认</span><button type="button" class="btn btn-soft btn-sm" data-ok="${f}">确认</button>`:d.src==='human'?SRC_TAG.human:'<span class="pill gray">待填</span>'}</li>`;
+  }).join('');
+}
+/* 人工输入即视为人工录入；AI 提取的值必须点「确认」 */
+$('pm-fields').addEventListener('change',e=>{const f=e.target.dataset.f;if(!f)return;const v=e.target.value.trim();draft[f]={v,src:v?'human':'missing'};renderNewProductFields();});
+$('pm-fields').addEventListener('click',e=>{const f=e.target.dataset.ok;if(!f)return;draft[f].src='human';renderNewProductFields();});
+function aiExtract(){
+  const s=AI_SAMPLE[$('pm-cat').value];let n=0;
+  Object.entries(s).forEach(([k,v])=>{if(!draft[k]||!draft[k].v){draft[k]={v,src:'ai'};n++;}});
+  renderNewProductFields();toast(n?`AI 提取了 ${n} 个字段，需逐项确认`:'没有可补充的字段');
+}
+$('pm-cat').addEventListener('change',()=>{draft={};renderNewProductFields();});
+function saveNewProduct(){
+  const name=$('pm-name').value.trim(), cat=$('pm-cat').value, err=$('pm-error');
+  if(!name){err.textContent='请填写商品名称';err.hidden=false;$('pm-name').focus();return;}
+  const fields={};CATS[cat].fields.forEach(f=>fields[f]=draft[f]&&draft[f].v?{...draft[f]}:{v:'',src:'missing'});
+  const id='p'+(products.length+1);
+  products.push({id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),affected:0,fields,skus:[]});
+  audit.push({obj:name,op:'新建商品主档',from:'—',to:CATS[cat].name,who:OPERATOR,at:now()});
+  closeModal('product-modal');
+  $('pm-name').value='';$('pm-pitch').value='';err.hidden=true;draft={};renderNewProductFields();
+  showProduct(id);refreshAll();go('products');
+  const pend=Object.values(fields).filter(f=>f.src!=='human').length;
+  toast(pend?`已保存，${pend} 个必填字段待补 / 待确认`:'已保存');
+}
+
+/* ============ 制作台 ============ */
+/* 渠道尺寸为示例，正式规格需对照各平台当期规则确认 */
+const CHANNELS=[
+  {id:'taobao',name:'淘宝',size:'800 × 800',rule:'主图可含文字；文字须为独立图层'},
+  {id:'douyin',name:'抖音',size:'800 × 800',rule:'主图可含文字；文字须为独立图层'},
+  {id:'amazon',name:'Amazon',size:'1600 × 1600',rule:'主图要求纯白底、无文字无贴片，文案只能放附图'},
+];
+const LAYOUTS=[['center','居中大字'],['left','左文右图'],['patch','卖点贴片']];
+let studioPid='p1', studioStep=0, sceneSel=0, layoutSel=0, channelSel=0;
+$('studio-step').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setStudioStep(+b.dataset.step);});
+$('studio-product').addEventListener('change',e=>{studioPid=e.target.value;sceneSel=0;renderStudio();});
+function setStudioStep(n){
+  studioStep=n;
+  document.querySelectorAll('#studio-step button').forEach(x=>{const on=+x.dataset.step===n;x.classList.toggle('active',on);x.setAttribute('aria-pressed',on);});
+  renderStudio();
+}
+function enterStudio(pid){studioPid=pid;sceneSel=0;setStudioStep(0);go('studio');}
+function blockNotice(p){
+  const pend=Object.entries(p.fields).filter(([,f])=>f.src!=='human').map(([k])=>k);
+  return `<div class="notice red">「${esc(p.name)}」档案未完整：${pend.join('、')} 待补或待确认，生成已阻断。
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="showProduct('${p.id}');go('products')">去补档案</button></div>`;
+}
+/* 生成后按品类弹出的人工检查清单 */
+function checkList(p,extra=[]){
+  return `<ul class="checklist">${[...CATS[p.cat].checks.map(c=>c+'与原图一致'),...extra].map((c,i)=>`<li>
+    <input type="checkbox" id="ck-${studioStep}-${i}" style="margin-top:3px"><label for="ck-${studioStep}-${i}" style="margin:0;font-weight:400">${c}</label></li>`).join('')}</ul>`;
+}
+function submitGen(what){toast(`原型：已提交「${what}」到任务中心，提交前会显示费用估算`);}
+function renderStudio(){
+  $('studio-product').innerHTML=products.map(p=>`<option value="${p.id}" ${p.id===studioPid?'selected':''}>${esc(p.name)}</option>`).join('');
+  const p=pById(studioPid), sub=CATS[p.cat].subject, ok=canGenerate(p), dis=ok?'':'disabled';
+  const el=$('studio-body');
+  if(studioStep===0){
+    el.innerHTML=`
+    <div class="two-col">
+      <div class="card"><div class="card-h"><h3>1 · 抠图与白底图</h3><span class="pill green">不调用生成模型</span></div>
+        <div class="card-b">
+          <div class="scene-grid">
+            <div class="scene"><div class="ph sq">${productSVG(sub,'raw')}</div><div class="sc-name">原始图</div></div>
+            <div class="scene"><div class="ph sq" style="${checker}">${productSVG(sub,'cut')}</div><div class="sc-name">透明底 PNG</div></div>
+            <div class="scene"><div class="ph sq">${productSVG(sub,'white')}</div><div class="sc-name">白底图 + 接地阴影</div></div>
+          </div>
+          <div class="notice blue" style="margin-top:14px">走成熟抠图服务 + 常规图像处理。透明瓶 / 镂空 / 毛发不被切掉；边缘可人工补画并前后对照。</div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><h3>导出设置</h3></div>
+        <div class="card-b">
+          <div class="field"><label for="cut-size">画布规格（示例）</label><select class="select" id="cut-size">${CHANNELS.map(c=>`<option>${c.name} · ${c.size}</option>`).join('')}</select></div>
+          <div class="field"><label for="cut-ratio">主体占比</label><input class="input" id="cut-ratio" value="85%"></div>
+          <div class="field"><label>接地阴影</label>${seg(['柔和','无','实投影'])}</div>
+          <div class="field"><label>白底颜色</label>${seg(['纯白 #FFFFFF','指定纯色'])}</div>
+          <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" onclick="toast('原型：透明底与白底分开导出两份文件')">导出透明底 + 白底（分开两份）</button>
+        </div>
+      </div>
+    </div>`;
+  } else if(studioStep===1){
+    const scenes=CATS[p.cat].scenes, kind=scenes[sceneSel][0];
+    const POS=[{x:50,y:52,w:34},{x:38,y:54,w:30},{x:62,y:50,w:28},{x:50,y:56,w:40}];
+    el.innerHTML=(ok?'':blockNotice(p))+`
+    <div class="two-col">
+      <div class="card"><div class="card-h"><h3>2 · 商品场景图</h3><span class="pill brand">H1 主战场</span></div>
+        <div class="card-b">
+          <div class="field"><label>推荐场景（按「${CATS[p.cat].name}」品类）</label>
+            <div class="scene-grid">${scenes.map((s,i)=>`
+              <button type="button" class="scene ${i===sceneSel?'sel':''}" aria-pressed="${i===sceneSel}" onclick="sceneSel=${i};renderStudio()">
+                <span class="check" aria-hidden="true">✓</span><span class="ph" style="display:block">${sceneSVG(s[0])}</span><span class="sc-name" style="display:block">${s[1]}</span></button>`).join('')}
+            </div>
+          </div>
+          <div class="field"><label>构图偏好</label>${seg(['居中','三分法','留白'])}</div>
+          <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('场景图 4 张')">✦ 生成 4 张候选</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><h3>候选（示例）</h3><span class="sub">生成环境 + 合成真实商品</span></div>
+        <div class="card-b">
+          <div class="scene-grid" style="grid-template-columns:repeat(2,1fr)">
+            ${POS.map((pos,i)=>`<div class="scene"><div class="ph">${compositeSVG(kind,sub,pos)}</div><div class="sc-name">候选 ${i+1}</div></div>`).join('')}
+          </div>
+          <div class="notice" style="margin-top:14px">商品是原图像素，只允许调位置 / 比例 / 透视 / 阴影。局部重做只重生成背景区域。</div>
+          <div class="field"><label>生成后必查（${CATS[p.cat].name}）</label>${checkList(p)}</div>
+        </div>
+      </div>
+    </div>`;
+  } else if(studioStep===2){
+    const ch=CHANNELS[channelSel], noText=ch.id==='amazon', sku=p.skus[0]||{price:0};
+    const hero=(layout,old)=>heroSVG(sub,{layout,title:p.short,tag:pitchTag(p),price:sku.price,oldPrice:old,noText});
+    el.innerHTML=(ok?'':blockNotice(p))+`
+    <div class="two-col">
+      <div class="card"><div class="card-h"><h3>3 · 主图与封面</h3><span class="sub">商家真正拿去上架的那一张</span></div>
+        <div class="card-b">
+          <div class="field"><label>目标渠道（MVP 3 个）</label>
+            <div class="seg" role="group">${CHANNELS.map((c,i)=>`<button type="button" class="${i===channelSel?'active':''}" aria-pressed="${i===channelSel}" onclick="channelSel=${i};renderStudio()">${c.name}</button>`).join('')}</div>
+            <p class="small muted" style="margin-top:6px">${ch.size}（示例规格） · ${ch.rule}</p>
+          </div>
+          <div class="field"><label>内置模板</label>
+            ${noText?'<div class="notice blue">Amazon 主图不套文字模板，统一输出纯白底商品图；带文案的版式用于附图。</div>':''}
+            <div class="scene-grid">${LAYOUTS.map((l,i)=>`
+              <button type="button" class="scene ${i===layoutSel?'sel':''}" aria-pressed="${i===layoutSel}" ${noText?'disabled':''} onclick="layoutSel=${i};renderStudio()">
+                <span class="check" aria-hidden="true">✓</span><span class="ph tall" style="display:block">${heroSVG(sub,{layout:l[0],title:p.short,tag:pitchTag(p),price:sku.price})}</span><span class="sc-name" style="display:block">${l[1]}</span></button>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><h3>候选预览（示例）</h3><span class="sub">缩略图下仍能识别商品</span></div>
+        <div class="card-b">
+          <div class="scene-grid">${[Math.round(sku.price*1.2),0,0].map(o=>`<div class="scene"><div class="ph tall">${hero(LAYOUTS[layoutSel][0],o)}</div></div>`).join('')}</div>
+          <hr class="hr">
+          <div class="field"><label>安全区与可读性检查</label>
+            <ul class="checklist">
+              <li><span class="ck ok" aria-hidden="true">✓</span><span>价格 / 标题为独立可编辑图层，未烧进图里</span></li>
+              <li><span class="ck ok" aria-hidden="true">✓</span><span>无文字主图与可含文字附图分开配置</span></li>
+            </ul>
+            ${checkList(p,['缩略图尺寸下可识别商品'])}
+          </div>
+          <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('主图 3 张')">生成 3 张候选</button>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    const kind=CATS[p.cat].scenes[0][0], cap=p.pitch.split(/[，。]/)[0];
+    el.innerHTML=(ok?'':blockNotice(p))+`
+    <div class="two-col">
+      <div class="card"><div class="card-h"><h3>4 · 商品展示短视频</h3><span class="pill brand">极简形态 · 15s</span></div>
+        <div class="card-b">
+          <div class="notice blue">输入只用<strong>已确认</strong>的主图 + 场景图 + 1–2 句卖点。单镜头失败只重做该段，其他镜头与编辑历史保留。</div>
+          <div class="field"><label>固定 3 段式模板</label>
+            <ul class="checklist">
+              <li><span class="ck ok" aria-hidden="true">1</span><span>主图推近（3–5s）</span></li>
+              <li><span class="ck ok" aria-hidden="true">2</span><span>场景切换（3–5s）</span></li>
+              <li><span class="ck ok" aria-hidden="true">3</span><span>细节展示（3–5s）</span></li>
+            </ul>
+          </div>
+          <div class="field"><label for="vid-cap">字幕文案</label><input class="input" id="vid-cap" value="${esc(cap)}" oninput="$('vid-cap-view').textContent=this.value"></div>
+          <div class="row cols-2">
+            <div class="field"><label>字幕</label>${seg(['自动字幕','无'])}</div>
+            <div class="field"><label>BGM</label>${seg(['轻快','无'])}</div>
+          </div>
+          <div class="notice">视频成本约占全套 80%，MVP 只做这一种形态，目的是测准成本。</div>
+          <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('15s 展示视频')">生成 15s 视频</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><h3>预览（示例）</h3><span class="sub">9:16 · 15s · MP4 · 1080 × 1920</span></div>
+        <div class="card-b" style="display:grid;place-items:center;padding:24px">
+          <div style="width:150px;aspect-ratio:9/16;border-radius:12px;overflow:hidden;border:1px solid var(--line);position:relative">
+            ${compositeSVG(kind,sub,{x:50,y:46,w:60})}
+            <div id="vid-cap-view" style="position:absolute;bottom:22px;left:6px;right:6px;text-align:center;color:#fff;font-size:10px;background:rgba(0,0,0,.55);padding:3px;border-radius:4px">${esc(cap)}</div>
+            <div style="position:absolute;top:8px;right:8px;color:#fff;font-size:9px;background:rgba(0,0,0,.55);padding:1px 5px;border-radius:4px">0:15</div>
+          </div>
+          <div style="width:100%;margin-top:14px">${checkList(p,['各镜头商品身份一致，无闪烁 / 形变 / 黑帧','字幕不遮挡商品主体','音画同步'])}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+}
+
+/* ============ 画布编辑器 · 子链路 A：图层内编辑 ============ */
+/* 编辑对象固定为：森序 · 青绿 150ml · 淘宝主图（与素材库版本列表同一份） */
+const CANVAS_SKU='s11';
+let cv={}, base={}, hist=[], fut=[], layerSel=2, checks=null, canvasMode='layer';
+const BG_CYCLE=['plant','bath','white'];
+const LAYERS=[
+  {key:'bg',icon:'🖼',name:'背景图层',sub:()=>SCENE_LABEL[cv.bg]+' · 生成',lock:false},
+  {key:'product',icon:'🧴',name:'商品图层',sub:()=>'真实像素 · 锁定',lock:true},
+  {key:'price',icon:'🅣',name:'价格文字',sub:()=>'¥'+cv.price+' · 可编辑',lock:false},
+  {key:'title',icon:'🅣',name:'标题文字',sub:()=>cv.title,lock:false},
+];
+const latestVersion=()=>versions.filter(v=>v.status!=='已驳回').slice(-1)[0];
+const snap=o=>JSON.stringify({price:o.price,title:o.title,bg:o.bg});
+function resetCanvas(){const v=latestVersion();base={price:v.price,title:v.title,bg:v.bg,v:v.v,status:v.status};cv={price:v.price,title:v.title,bg:v.bg};hist=[];fut=[];checks=null;}
+const isDirty=()=>snap(cv)!==snap(base);
+function canvasComposite(c,w=360){
+  const k=w/360;
+  return `<div style="position:relative;width:min(100%,${w}px);aspect-ratio:750/1000;border-radius:${10*k}px;overflow:hidden;${w>100?'box-shadow:var(--shadow-lg)':''}">
+    <span style="position:absolute;inset:0">${sceneSVG(c.bg)}</span>
+    <span style="position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:42%;display:block">${productSVG('bottle','cut')}</span>
+    <div style="position:absolute;left:0;right:0;bottom:0;padding:${12*k}px ${16*k}px;background:linear-gradient(transparent,rgba(0,0,0,.55));color:#fff">
+      <div style="font-size:${14*k}px;font-weight:700">${esc(c.title)}</div>
+      <div style="font-size:${22*k}px;font-weight:800;color:#ffd97a">¥${c.price}</div>
+    </div></div>`;
+}
+function renderCanvas(){
+  $('btn-undo').disabled=canvasMode!=='layer'||!hist.length;
+  $('btn-redo').disabled=canvasMode!=='layer'||!fut.length;
+  $('btn-save').disabled=canvasMode!=='layer'||!isDirty();
+  if(canvasMode==='flat'){renderFlat();return;}
+  $('left-title').textContent='图层';$('tools-title').textContent='图层属性';
+  $('canvas-sub').textContent=`基于 v${base.v}（${base.status}）· 淘宝主图 750 × 1000${isDirty()?' · 有未保存修改':''}`;
+  $('layer-list').innerHTML=LAYERS.map((l,i)=>`
+    <button type="button" class="layer ${i===layerSel?'sel':''}" style="margin-bottom:8px" aria-pressed="${i===layerSel}" onclick="layerSel=${i};checks=null;renderCanvas()">
+      <span class="thumb" aria-hidden="true">${l.icon}</span>
+      <span style="flex:1;min-width:0"><span class="l-name" style="display:block">${l.name}</span><span class="l-sub" style="display:block">${esc(l.sub())}</span></span>
+      ${l.lock?'<span class="lock" aria-label="已锁定">🔒</span>':''}</button>`).join('');
+  $('canvas-area').innerHTML=canvasComposite(cv);
+  const L=LAYERS[layerSel];
+  let html;
+  if(L.key==='product'){
+    html=`<div class="notice blue">商品图层是原图像素，不允许 AI 重绘或修改，只能调整位置 / 比例 / 阴影（MVP 原型未演示拖拽）。</div>`;
+  } else if(L.key==='bg'){
+    html=`<div class="field"><label>局部重做 · 只重生成背景</label>
+        <div class="seg" role="group" style="width:100%">${BG_CYCLE.map(b=>`<button type="button" style="flex:1" class="${b===cv.bg?'active':''}" aria-pressed="${b===cv.bg}" data-bg="${b}">${SCENE_LABEL[b]}</button>`).join('')}</div></div>
+      <button type="button" class="btn btn-soft" style="width:100%;justify-content:center" onclick="regenBg()">只重生成背景</button>
+      <p class="small muted" style="margin-top:8px">商品图层与文字图层保持不变。</p>`;
+  } else {
+    const isPrice=L.key==='price';
+    html=`<div class="field"><label for="txt-input">${isPrice?'新价格':'新标题'}</label>
+        <input class="input" id="txt-input" value="${esc(isPrice?'¥'+cv.price:cv.title)}" ${isPrice?'inputmode="decimal"':''}></div>
+      ${isPrice?'<div class="notice">价格改动<strong>强制二次确认</strong>，并记录原值 → 新值 → 操作人 → 时间，原图可回滚。</div>':''}
+      <div class="notice red" id="txt-err" hidden></div>
+      <button type="button" class="btn btn-soft" style="width:100%;justify-content:center" onclick="applyText()">应用文字</button>`;
+  }
+  $('canvas-tools').innerHTML=html+`<hr class="hr"><div class="field"><label>校验状态</label>${renderChecks()}</div>`;
+}
+function renderChecks(){
+  if(!checks)return '<ul class="checklist"><li><span class="ck todo" aria-hidden="true">·</span><span class="muted">尚未修改，修改后自动回读校验</span></li></ul>';
+  return `<ul class="checklist">${checks.map(c=>`<li><span class="ck ${c[0]?'ok':'fail'}" aria-hidden="true">${c[0]?'✓':'✕'}</span><span>${c[1]}</span></li>`).join('')}</ul>`;
+}
+function commit(patch,chk){hist.push({...cv});fut=[];Object.assign(cv,patch);checks=chk;renderCanvas();}
+function undo(){if(!hist.length)return;fut.push({...cv});cv=hist.pop();checks=null;renderCanvas();}
+function redo(){if(!fut.length)return;hist.push({...cv});cv=fut.pop();checks=null;renderCanvas();}
+function regenBg(){
+  const b=$('canvas-tools').querySelector('.seg button.active').dataset.bg;
+  if(b===cv.bg){toast('请先选择一个不同的背景');return;}
+  commit({bg:b},[[1,'只有背景区域发生变化'],[1,'商品图层像素差异 = 0'],[1,'文字图层未变']]);
+}
+function applyText(){
+  const raw=$('txt-input').value.trim(), err=$('txt-err');
+  if(LAYERS[layerSel].key==='price'){
+    if(!/^[¥￥]?\d+(\.\d{1,2})?$/.test(raw)){err.textContent='价格格式不正确，例如 ¥119 或 119.9';err.hidden=false;return;}
+    const v=+raw.replace(/[¥￥]/g,'');
+    if(v===cv.price){err.textContent='价格没有变化';err.hidden=false;return;}
+    confirmPrice({ctx:'森序洁面乳 · 青绿 150ml · 淘宝主图',from:cv.price,to:v,onOk:()=>commit({price:v},[[1,'位置 / 字号 / 颜色未变'],[1,`OCR 回读：¥${v}`],[1,'数值解析一致'],[1,'其他图层未变']])});
+  } else {
+    if(!raw){err.textContent='标题不能为空';err.hidden=false;return;}
+    if(raw===cv.title){err.textContent='标题没有变化';err.hidden=false;return;}
+    commit({title:raw},[[1,'位置 / 字号 / 颜色未变'],[1,'OCR 回读与输入一致'],[1,'其他图层未变']]);
+  }
+}
+/* 价格二次确认：必须勾选后才能确认 */
+function confirmPrice({ctx,from,to,onOk}){
+  const pct=from?((to-from)/from*100):0;
+  $('prm-body').innerHTML=`
+    <table class="table kv-table"><tbody>
+      <tr><td>对象</td><td>${esc(ctx)}</td></tr>
+      <tr><td>原价</td><td class="mono">¥${from}</td></tr>
+      <tr><td>新价</td><td class="mono"><b>¥${to}</b>（${pct>0?'+':''}${pct.toFixed(1)}%）</td></tr>
+    </tbody></table>
+    ${Math.abs(pct)>30?'<div class="notice red" style="margin-top:12px">变动超过 30%，请再次核对是否多输或少输一位。</div>':''}
+    <div class="notice" style="margin-top:12px">价格错误属于资损风险。确认后写入留痕，原图保留可回滚。</div>
+    <label class="flex" style="font-weight:400"><input type="checkbox" id="prm-ck"> 我已核对新价格与活动方案一致</label>`;
+  const ok=$('prm-ok');ok.disabled=true;
+  $('prm-ck').onchange=e=>ok.disabled=!e.target.checked;
+  ok.onclick=()=>{closeModal('price-modal');onOk();};
+  openModal('price-modal');
+}
+function saveVersion(){
+  if(!isDirty())return;
+  const diff=[];
+  if(cv.price!==base.price)diff.push(['价格',`¥${base.price}`,`¥${cv.price}`]);
+  if(cv.title!==base.title)diff.push(['标题',base.title,cv.title]);
+  if(cv.bg!==base.bg)diff.push(['背景',SCENE_LABEL[base.bg],SCENE_LABEL[cv.bg]]);
+  const v=versions.length+1;
+  versions.push({v,...cv,status:'待确认',note:diff.map(d=>`${d[0]} ${d[1]} → ${d[2]}`).join('；'),who:OPERATOR,at:now()});
+  diff.forEach(d=>audit.push({obj:'主图 v'+v,op:'修改 · '+d[0],from:d[1],to:d[2],who:OPERATOR,at:now()}));
+  resetCanvas();refreshAll();toast(`已保存为 v${v}（待确认），可在素材库确认交付`);
+}
+/* 版本对比：最新版本 vs 上一版本；有未保存修改时对比「当前画布 vs 基准版本」 */
+function openVersionCompare(){
+  let a,b;
+  if(canvasMode==='layer'&&isDirty()){a={label:'当前画布 · 未保存',pill:['amber','草稿'],c:cv};const bv=versions.find(v=>v.v===base.v);b={label:'v'+bv.v,pill:verPill(bv.status),c:bv,note:bv.note};}
+  else{const [p,l]=versions.slice(-2);a={label:'v'+l.v,pill:verPill(l.status),c:l,note:l.note};b={label:'v'+p.v,pill:verPill(p.status),c:p,note:p.note};}
+  const card=x=>`<div class="card"><div class="card-h"><h3>${x.label}</h3><span class="pill ${x.pill[0]}">${x.pill[1]}</span></div><div class="card-b" style="display:grid;place-items:center">${canvasComposite(x.c,220)}</div></div>`;
+  const diff=[['价格',`¥${b.c.price}`,`¥${a.c.price}`],['标题',b.c.title,a.c.title],['背景',SCENE_LABEL[b.c.bg],SCENE_LABEL[a.c.bg]]].filter(d=>d[1]!==d[2]);
+  $('vm-title').textContent=`版本对比 · ${a.label} vs ${b.label}`;
+  $('vm-body').innerHTML=`<div class="two-col" style="grid-template-columns:1fr 1fr">${card(a)}${card(b)}</div>
+    <div class="notice" style="margin-top:14px">差异：${diff.length?diff.map(d=>`${d[0]} ${esc(d[1])} → ${esc(d[2])}`).join('；'):'无'}。商品图层不参与编辑，始终一致。</div>`;
+  openModal('version-modal');
+}
+
+/* ============ 画布编辑器 · 子链路 B：扁平图文字替换（AI 修图） ============ */
+/* 示例：供应商扁平图（文字已烧进像素），OCR 识别出 3 个文字块 */
+const flat={blocks:[
+  {id:'b1',text:'Type-C 快冲线',type:'title',x:10,y:12,w:100,h:14,size:11,color:'#1f2430',angle:0,font:'规整黑体',route:'A'},
+  {id:'b2',text:'¥39.9',type:'price',x:12,y:118,w:46,h:20,size:15,color:'#dc2626',angle:0,font:'规整黑体',route:'A'},
+  {id:'b3',text:'限时特惠',type:'art',x:66,y:116,w:46,h:22,size:10,color:'#ffffff',angle:-6,font:'描边艺术字',route:'B'},
+], sel:'b1', run:null, simFail:false};
+const ROUTE_NAME={A:'确定性排版（默认）',B:'生成式替换（艺术字兜底）'};
+function flatSVG(){
+  const b=flat.blocks,T=k=>esc(b.find(x=>x.id===k).text);
+  return `<svg viewBox="0 0 120 150" width="100%" style="max-width:360px;display:block;margin:auto;border-radius:10px;box-shadow:var(--shadow-lg)" role="img" aria-label="供应商扁平图">
+    <rect width="120" height="150" fill="#f3f4f6"/><text x="60" y="23" font-size="11" font-weight="800" text-anchor="middle" fill="#1f2430" font-family="sans-serif">${T('b1')}</text>
+    <svg x="34" y="28" width="52" height="74" viewBox="0 0 128 180">${subjectShape('cable')}</svg>
+    <text x="35" y="133" font-size="15" font-weight="800" text-anchor="middle" fill="#dc2626" font-family="sans-serif">${T('b2')}</text>
+    <g transform="rotate(-6 89 127)"><rect x="66" y="116" width="46" height="22" rx="4" fill="#f59e0b"/><text x="89" y="131" font-size="10" font-weight="800" text-anchor="middle" fill="#fff" stroke="#b45309" stroke-width=".6" font-family="sans-serif">${T('b3')}</text></g>
+    ${b.map(x=>`<rect class="ocr-box ${x.route==='B'?'art':''} ${x.id===flat.sel?'sel':''}" data-b="${x.id}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="2" ${x.angle?`transform="rotate(${x.angle} ${x.x+x.w/2} ${x.y+x.h/2})"`:''}/>`).join('')}
+  </svg>`;
+}
+const PIPE={A:['OCR 定位文字块','inpainting 擦除原字（mask 仅覆盖笔画）','真实字体渲染新字','透视贴合原角度与基线'],B:['OCR 定位文字块','生成式替换（只换字，保持字体 / 颜色 / 位置）']};
+const READBACK=['OCR 逐字比对与目标全等','数值解析一致（价格类）','版式偏移 < 5%','mask 外像素差异 ≈ 0'];
+function renderFlat(){
+  const blk=flat.blocks.find(x=>x.id===flat.sel);
+  $('left-title').textContent='OCR 文字块';$('tools-title').textContent='文字替换';
+  $('canvas-sub').textContent='上传的供应商扁平图 · 点击虚线框选择文字块';
+  $('layer-list').innerHTML=flat.blocks.map(x=>`
+    <button type="button" class="layer ${x.id===flat.sel?'sel':''}" style="margin-bottom:8px" aria-pressed="${x.id===flat.sel}" onclick="selBlock('${x.id}')">
+      <span class="thumb" aria-hidden="true">${x.type==='price'?'¥':'T'}</span>
+      <span style="flex:1;min-width:0"><span class="l-name" style="display:block">${esc(x.text)}</span><span class="l-sub" style="display:block">路径 ${x.route} · ${x.font}</span></span></button>`).join('')+
+    '<p class="small muted">MVP 不做任意扁平图自动拆图层，只对识别出的文字块做替换。</p>';
+  $('canvas-area').innerHTML=flatSVG();
+  const r=flat.run;
+  $('canvas-tools').innerHTML=`
+    <table class="table kv-table"><tbody>
+      <tr><td>位置</td><td class="mono">x${blk.x} y${blk.y} · ${blk.w}×${blk.h}</td></tr>
+      <tr><td>字号 / 字色</td><td class="mono">${blk.size}px · ${blk.color}</td></tr>
+      <tr><td>倾斜角</td><td class="mono">${blk.angle}°</td></tr>
+      <tr><td>路由</td><td>${ROUTE_NAME[blk.route]}</td></tr></tbody></table>
+    ${blk.route==='B'?'<div class="notice" style="margin-top:10px">OCR 判定为艺术字，降级到生成式替换，中文易出错字，必须回读校验。</div>':''}
+    <div class="field" style="margin-top:12px"><label for="flat-input">替换为</label><input class="input" id="flat-input" value="${esc(blk.text)}"></div>
+    <div class="notice red" id="flat-err" hidden></div>
+    <label class="flex small" style="margin-bottom:10px"><input type="checkbox" id="flat-fail" ${flat.simFail?'checked':''} onchange="flat.simFail=this.checked"> 演示：模拟回读校验失败</label>
+    <button type="button" class="btn btn-soft" style="width:100%;justify-content:center" onclick="runFlat()">执行替换</button>
+    <hr class="hr"><div class="field"><label>处理流水线</label>${r&&r.id===blk.id?pipeHTML(r):'<p class="small muted">尚未执行</p>'}</div>`;
+}
+function pipeHTML(r){
+  const steps=PIPE[r.route].map(s=>[s,'ok']).concat(READBACK.map((s,i)=>[`回读：${s}`,r.fail&&i===0?'bad':'ok']));
+  return `<ul class="pipe">${steps.map(([s,c])=>`<li class="${c}"><span class="d" aria-hidden="true">${c==='ok'?'✓':'✕'}</span><span>${s}</span></li>`).join('')}</ul>
+    ${r.fail?`<div class="notice red" style="margin-top:8px">校验未通过，结果不落盘：OCR 回读为「${esc(r.read)}」，与目标「${esc(r.to)}」不一致。请重试或改走人工。</div>`
+      :`<div class="notice green" style="margin-top:8px">四项回读全部通过，已生成新版本，原图保留可回滚。</div>`}`;
+}
+function selBlock(id){flat.sel=id;renderCanvas();}
+$('canvas-area').addEventListener('click',e=>{const r=e.target.closest('.ocr-box');if(r)selBlock(r.dataset.b);});
+function runFlat(){
+  const blk=flat.blocks.find(x=>x.id===flat.sel), to=$('flat-input').value.trim(), err=$('flat-err');
+  if(!to||to===blk.text){err.textContent=to?'内容没有变化':'替换内容不能为空';err.hidden=false;return;}
+  if(blk.type==='price'&&!/^[¥￥]\d+(\.\d{1,2})?$/.test(to)){err.textContent='价格格式不正确，例如 ¥29 或 ¥29.9';err.hidden=false;return;}
+  const exec=()=>{
+    const from=blk.text, fail=flat.simFail;
+    flat.run={id:blk.id,route:blk.route,to,fail,read:fail?to.slice(0,-1)+(to.slice(-1)==='线'?'钱':'＊'):to};
+    if(!fail){blk.text=to;audit.push({obj:'供应商扁平图',op:`文字替换 · 路径 ${blk.route}`,from,to,who:OPERATOR,at:now()});renderAudit();}
+    renderCanvas();
+  };
+  if(blk.type==='price')confirmPrice({ctx:'Type-C 快充线 · 供应商扁平图',from:+blk.text.replace(/[¥￥]/g,''),to:+to.replace(/[¥￥]/g,''),onOk:exec});
+  else exec();
+}
+onSeg('canvas-mode',v=>{canvasMode=v;renderCanvas();});
+
+/* ============ 任务中心 ============ */
+const ST_CLS={'成功':'green','执行中':'blue','等待':'gray','失败':'red','部分失败':'amber','已取消':'gray'};
+function renderTasks(){
+  const st=jobs.map(jobStatus), running=st.filter(s=>s==='执行中').length, fail=st.filter(s=>s.includes('失败')).length;
+  $('task-summary').textContent=`共 ${jobs.length} 个 · ${running} 个执行中 · ${fail} 个含失败项`;
+  $('task-list').innerHTML=jobs.map((j,ji)=>{
+    const s=jobStatus(j), done=j.items.filter(i=>['成功','失败','已取消'].includes(i.status)).length;
+    const est=sum(j.items.filter(i=>i.status!=='已取消'),'est'), act=sum(j.items,'act');
+    const canCancel=j.items.some(i=>ACTIVE.includes(i.status));
+    return `<div class="card" style="margin-bottom:10px;box-shadow:none"><div class="card-b" style="padding:12px 14px">
+      <div class="flex" style="justify-content:space-between;margin-bottom:6px">
+        <span><b style="font-size:13px">${esc(j.name)}</b> <span class="small muted mono">${j.id} · ${j.created}</span></span>
+        <span class="flex"><span class="pill ${ST_CLS[s]}">${s}</span>${canCancel?`<button type="button" class="btn btn-ghost btn-sm" onclick="cancelJob(${ji})">取消未完成项</button>`:''}</span>
+      </div>
+      <div class="progress" role="progressbar" aria-valuenow="${done}" aria-valuemin="0" aria-valuemax="${j.items.length}" aria-label="已结束项"><i class="${s==='成功'?'green':s.includes('失败')?'amber':''}" style="width:${done/j.items.length*100}%"></i></div>
+      <div class="flex small muted" style="justify-content:space-between;margin-top:6px"><span>${done}/${j.items.length} 项已结束</span><span class="mono">估算 ${yuan(est)} · 实际 ${yuan(act)}</span></div>
+      <div class="items"><table class="table"><thead><tr><th>SKU</th><th>产出</th><th>状态</th><th>估算</th><th>实际</th><th></th></tr></thead><tbody>
+        ${j.items.map((it,ii)=>`<tr><td>${esc(skuInfo(it.sku).label)}</td><td>${it.out}</td>
+          <td><span class="pill ${ST_CLS[it.status]}">${it.status}</span>${it.err?`<div class="small" style="color:var(--red);margin-top:3px">${esc(it.err)}</div>`:''}</td>
+          <td class="mono">${yuan(it.est)}</td><td class="mono">${it.act?yuan(it.act):'—'}</td>
+          <td>${it.status==='失败'?`<button type="button" class="btn btn-danger btn-sm" onclick="retryItem(${ji},${ii})">单项重试</button>`:''}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div></div>`;
+  }).join('');
+  const rows=skuCostRows();
+  const full=rows.filter(([,r])=>r.full);
+  $('cost-table').innerHTML=`<thead><tr><th>SKU</th><th>产出</th><th>估算费</th><th>实际费</th><th>全套完成</th></tr></thead><tbody>
+    ${rows.map(([sid,r])=>`<tr><td>${esc(skuInfo(sid).label)}</td><td class="small">${Object.entries(r.outs).map(([o,s])=>`${o} <span class="pill ${ST_CLS[s]}">${s}</span>`).join(' ')}</td>
+      <td class="mono">${yuan(r.est)}</td><td class="mono"><b>${yuan(r.act)}</b></td><td>${r.full?'<span class="pill green">是 · 计入 H2</span>':'<span class="pill gray">否</span>'}</td></tr>`).join('')}
+    <tr style="background:#fafafa"><td colspan="5" class="small">H2 = 已完成「8 图 + 15s 视频」的 SKU 实际费均值（含返工与重试）：
+      ${full.length?`<b>${yuan(avgOf(full,'act'))}</b>（${full.length} 个 SKU，估算均值 ${yuan(avgOf(full,'est'))}）${avgOf(full,'act')<=15?' ≤ ¥15 ✓':' > ¥15 ✕'}`:'暂无'}</td></tr></tbody>`;
+}
+/* 重试只重跑失败项，已成功项不重复执行、不重复扣费 */
+function retryItem(ji,ii){
+  const it=jobs[ji].items[ii];
+  it.status='成功';it.act=+(it.est*1.05).toFixed(1);delete it.err;
+  audit.push({obj:jobs[ji].id,op:'单项重试',from:'失败',to:`成功 · 实际 ${yuan(it.act)}`,who:OPERATOR,at:now()});
+  refreshAll();toast('重试成功，只对该项计费');
+}
+function cancelJob(ji){
+  let n=0;jobs[ji].items.forEach(i=>{if(ACTIVE.includes(i.status)){i.status='已取消';n++;}});
+  audit.push({obj:jobs[ji].id,op:'取消未完成项',from:`${n} 项未完成`,to:'已取消 · 不计费',who:OPERATOR,at:now()});
+  refreshAll();toast(`已取消 ${n} 项，已成功项保留`);
+}
+/* 新建批量任务 */
+function renderBatch(){
+  $('bm-skus').innerHTML=products.map(p=>p.skus.map(s=>{const ok=canGenerate(p);return `<li>
+    <input type="checkbox" id="bm-${s.id}" value="${s.id}" ${ok?'checked':''} onchange="renderBatchEstimate()" style="margin-top:3px">
+    <label for="bm-${s.id}" style="margin:0;font-weight:400;flex:1">${esc(p.short)} · ${esc(s.color)} ${esc(s.spec)}</label>
+    ${ok?'':'<span class="pill amber">档案未完整</span>'}</li>`;}).join('')).join('');
+  renderBatchEstimate();
+}
+function renderBatchEstimate(){
+  const t=TEMPLATES[$('bm-tpl').value];
+  const picked=[...$('bm-skus').querySelectorAll('input:checked')].map(i=>i.value);
+  const blocked=picked.filter(s=>!canGenerate(skuInfo(s).p));
+  /* 已成功的同类产出不重复执行 */
+  const doneSet=new Set();jobs.forEach(j=>j.items.forEach(i=>{if(i.status==='成功')doneSet.add(i.sku+'|'+i.out);}));
+  const todo=[],skip=[];
+  picked.forEach(s=>t.outs.forEach(([o,c])=>(doneSet.has(s+'|'+o)?skip:todo).push({sku:s,out:o,est:c})));
+  $('bm-block').hidden=!blocked.length;
+  $('bm-block').textContent=blocked.length?`${blocked.map(s=>skuInfo(s).label).join('、')} 档案未完整，不能提交。`:'';
+  $('bm-submit').disabled=!picked.length||!!blocked.length||!todo.length;
+  $('bm-estimate').innerHTML=`<div class="stat"><span>SKU</span><b>${picked.length}</b><span>个</span></div>
+    <div class="stat"><span>待执行</span><b>${todo.length}</b><span>项${skip.length?`（跳过已成功 ${skip.length} 项）`:''}</span></div>
+    <div class="stat"><span>费用估算</span><b>${yuan(sum(todo,'est'))}</b></div>`;
+  return todo;
+}
+function submitBatch(){
+  const todo=renderBatchEstimate();if(!todo.length)return;
+  const id='J-1021-'+String(jobs.length+1).padStart(2,'0');
+  jobs.unshift({id,name:'批量 · '+TEMPLATES[$('bm-tpl').value].name,created:now(),items:todo.map(x=>({...x,status:'等待',act:0}))});
+  closeModal('batch-modal');refreshAll();toast(`已提交 ${id}，${todo.length} 项进入排队`);
+}
+function openBatch(){renderBatch();openModal('batch-modal');}
+
+/* ============ 素材库 / 交付 ============ */
+/* 状态机：待确认 →（确认交付）已确认 / （驳回）已驳回；新的已确认会把旧的已确认置为已过期。均不删除 */
+const verPill=s=>({'已确认':['green','已确认 · 交付版本'],'待确认':['amber','待确认'],'已过期':['gray','已过期'],'已驳回':['red','已驳回']}[s]);
+function renderVersions(){
+  $('version-list').innerHTML=versions.slice().reverse().map(v=>`
+    <div class="prod-row">
+      <span style="width:54px;flex:none">${canvasComposite(v,54)}</span>
+      <span style="flex:1;min-width:0">
+        <span class="flex"><span class="pill brand">v${v.v}</span><span class="pill ${verPill(v.status)[0]}">${verPill(v.status)[1]}</span><span class="mono small">¥${v.price}</span></span>
+        <span class="l-name" style="margin-top:4px">${esc(v.note)}</span>
+        <span class="l-sub">${v.who} · ${v.at}</span>
+      </span>
+      <span class="flex" style="flex-direction:column;gap:6px">
+        ${v.status==='待确认'?`<button type="button" class="btn btn-soft btn-sm" onclick="setVersion(${v.v},'已确认')">确认交付</button><button type="button" class="btn btn-ghost btn-sm" onclick="setVersion(${v.v},'已驳回')">驳回</button>`:''}
+        ${v.status==='已过期'?`<button type="button" class="btn btn-ghost btn-sm" onclick="setVersion(${v.v},'已确认')">回滚为交付版本</button>`:''}
+      </span>
+    </div>`).join('')+'<div class="notice" style="margin-top:10px">旧版本只标记过期，不删除；MVP 单人审核即可。</div>';
+}
+function setVersion(n,to){
+  const v=versions.find(x=>x.v===n), prev=versions.find(x=>x.status==='已确认');
+  if(to==='已确认'&&prev&&prev!==v)prev.status='已过期';
+  audit.push({obj:'主图 v'+n,op:to==='已确认'?(v.status==='已过期'?'回滚为交付版本':'确认交付'):'驳回',from:v.status,to,who:OPERATOR,at:now()});
+  v.status=to;
+  if(canvasMode!=='layer'||!isDirty())resetCanvas();
+  refreshAll();
+}
+function renderAudit(){
+  $('audit-table').innerHTML=`<thead><tr><th>对象</th><th>操作</th><th>原值 → 新值</th><th>操作人 · 时间</th></tr></thead><tbody>
+    ${audit.slice().reverse().map(a=>`<tr><td>${esc(a.obj)}</td><td>${esc(a.op)}</td><td>${esc(a.from)} → <b>${esc(a.to)}</b></td><td class="small muted">${a.who} · ${a.at}</td></tr>`).join('')}</tbody>`;
+}
+/* 导出清单：只导出已确认版本，按渠道分目录；受影响商品不导出 */
+function renderExport(){
+  const ok=products.filter(p=>jobs.some(j=>j.items.some(i=>i.status==='成功'&&skuInfo(i.sku).p.id===p.id)));
+  const rows=[];
+  ok.forEach(p=>{
+    const doneSkus=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='8 图'&&i.status==='成功')));
+    if(!doneSkus.length)return;
+    const vids=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='15s 视频'&&i.status==='成功')));
+    const names=doneSkus.map(s=>s.color+(p.skus.filter(x=>x.color===s.color).length>1?' '+s.spec:'')).join(' / ');
+    rows.push({p,dir:'taobao/',file:`${p.id}_{sku}_main_01..03.jpg`,n:doneSkus.length*3,size:'800×800',skus:names});
+    rows.push({p,dir:'taobao/',file:`${p.id}_{sku}_scene_01..05.jpg`,n:doneSkus.length*5,size:'800×800',skus:names});
+    rows.push({p,dir:'amazon/',file:`${p.id}_{sku}_main_white.jpg`,n:doneSkus.length,size:'1600×1600',skus:names});
+    if(vids.length)rows.push({p,dir:'douyin/',file:`${p.id}_{sku}_show_15s.mp4`,n:vids.length,size:'1080×1920',skus:vids.map(s=>s.color+' '+s.spec).join(' / ')});
+  });
+  const aff=products.filter(p=>p.affected);
+  $('export-body').innerHTML=`${aff.length?`<div class="notice red">${aff.map(p=>`「${esc(p.short)}」${p.affected} 份素材受影响`).join('；')}，需重新校验后才能导出。
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="products.forEach(p=>p.affected=0);refreshAll()">演示：标记已重新校验</button></div>`:''}
+    <table class="table"><thead><tr><th>目录 / 文件名</th><th>数量</th><th>尺寸</th><th>对应 SKU</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr style="${r.p.affected?'opacity:.45':''}"><td class="mono small">${r.dir}${esc(r.file)}</td><td>${r.n}</td><td class="mono">${r.size}</td><td class="small">${esc(r.p.short)} · ${esc(r.skus)}</td></tr>`).join('')}</tbody></table>
+    <p class="small muted" style="margin-top:10px">只导出已确认版本。尺寸为示例规格；文件名中 {sku} 替换为 SKU 编码。</p>`;
+}
+
+/* ============ 刷新与初始化 ============ */
+function refreshAll(){
+  renderKPIs();renderOverviewProducts();renderProductList();renderProductDetail();
+  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
+$('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k}">${t.name}</option>`).join('');
+renderFlow();resetCanvas();renderNewProductFields();refreshAll();
+</script>
+</body>
+</html>
