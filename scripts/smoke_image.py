@@ -15,6 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Windows 中文控制台默认 GBK，打印 ✅ / ❌ 会抛 UnicodeEncodeError（此时图片已落盘）
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 from apps.core.config import get_settings  # noqa: E402
 from apps.core.storage import LocalStorage  # noqa: E402
 from apps.providers.base import ImageRequest, ProviderError  # noqa: E402
