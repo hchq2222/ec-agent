@@ -1,0 +1,82 @@
+# 生图 / 生视频 渠道与模型注册表
+#
+# 设计：
+#   provider = 协议与渠道（openai_compat / ark / replicate / fal ...），一个 provider 可挂多个模型
+#   model    = 对外暴露的 key，业务代码只用 key，不关心底层模型 ID 与渠道
+#
+# 新增模型：在 models 下加一条即可，不改代码。
+# 新增渠道：加一个 provider 块（type 决定适配器），并在 apps/providers/ 实现对应 adapter。
+#
+# 注意：api_key_env 指向环境变量名，真实密钥放 .env，绝不写在这里。
+
+providers:
+  - id: omyai
+    type: openai_compat
+    base_url: https://omyai.vip/v1
+    api_key_env: OMYAI_API_KEY
+    timeout_s: 180
+    models:
+      # ---- 文生图 / 图生图 ----
+      - key: gpt-image-2
+        model: gpt-image-2
+        kind: image
+        display_name: GPT Image 2
+        capabilities:
+          max_n: 4
+          sizes: ["auto", "1024x1024", "1536x1024", "1024x1536"]
+          qualities: ["auto", "low", "medium", "high"]
+          output_formats: ["png", "jpeg", "webp"]
+          backgrounds: ["auto", "opaque", "transparent"]
+          image_input: true          # 支持参考图（走 /images/edits）
+          mask: true
+          max_ref_images: 16
+        pricing:
+          unit: image
+          price: null                # 以渠道账单为准，待实测回填
+          currency: USD
+
+      - key: gpt-image-2.5-flare
+        model: gpt-image-2.5-flare
+        kind: image
+        display_name: GPT Image 2.5 Flare
+        capabilities:
+          max_n: 4
+          sizes: ["auto", "1024x1024", "1536x1024", "1024x1536"]
+          qualities: ["auto", "low", "medium", "high"]
+          output_formats: ["png", "jpeg", "webp"]
+          backgrounds: ["auto", "opaque", "transparent"]
+          image_input: true
+          mask: true
+          max_ref_images: 16
+        pricing:
+          unit: image
+          price: null
+          currency: USD
+
+      - key: gpt-image-2.5-sunburst
+        model: gpt-image-2.5-sunburst
+        kind: image
+        display_name: GPT Image 2.5 Sunburst
+        capabilities:
+          max_n: 4
+          sizes: ["auto", "1024x1024", "1536x1024", "1024x1536"]
+          qualities: ["auto", "low", "medium", "high"]
+          output_formats: ["png", "jpeg", "webp"]
+          backgrounds: ["auto", "opaque", "transparent"]
+          image_input: true
+          mask: true
+          max_ref_images: 16
+        pricing:
+          unit: image
+          price: null
+          currency: USD
+
+  # ---- 预留：后续接入其它渠道时启用 ----
+  # - id: ark
+  #   type: ark
+  #   base_url: https://ark.cn-beijing.volces.com/api/v3
+  #   api_key_env: ARK_API_KEY
+  #   models:
+  #     - key: seedream-5-flash
+  #       model: doubao-seedream-5-0-flash-260915
+  #       kind: image

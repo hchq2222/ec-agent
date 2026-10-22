@@ -91,7 +91,16 @@
 - ✅ **PostgreSQL 放开明文**：按需求把 `pg_hba.conf` 的 `hostnossl` 从 `reject` 改为 `scram-sha-256`（改用原地覆盖 + `chmod 644` + reload；TLS 保持可用），外网已验证 `sslmode=disable` 可连、错误密码仍被拒。
 - ✅ **Redis 改为明文**：`redis.conf` 的 `port 0` → `6379`、`tls-port` 关闭，compose 健康检查改为 `redis-cli ping` 并重建容器；AOF 数据完好，外网明文读写、错误密码拒绝、匿名拒绝均验证通过。
 - ✅ **文档结构整理**：`README.md` 移至根目录并改为项目索引；`AGENTS.md` 精简为导航页（只留"去哪看"）；新增 `PHASE.md`；恢复 `infrastructure/测试环境中间件访问说明.md`；清理 `TD-001` 中对已移除文档的引用。
-- ⬜ **未开始**：渠道实测、图层拆分验证、任何业务代码。
+- ⬜ **未开始**：图层拆分验证。
+
+### 2026-10-22
+
+- ✅ **生图接入层**：落地 `apps/`（FastAPI + Provider/Model 注册表 + OpenAI 兼容 adapter），模型与渠道由 `config/providers.yaml` 驱动，新增模型只改 YAML → `docs/技术设计/TD-002-生图能力接入.md`。
+- ✅ **已注册模型**：`gpt-image-2`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`（来自 omyai 公开 `/api/pricing`）。
+- ✅ **接口**：`GET /api/models`、`POST /api/images/generate`、`/files` 静态产物；统一错误码 9 个；产物落本地 `var/outputs`。
+- ✅ **测试**：11 个单测通过（成功/URL 下载/401/429/内容拦截/多图/能力校验），均为 MockTransport，不产生费用。
+- ⚠️ **渠道密钥无效**：`https://omyai.vip` 对提供的 key 返回 `401 Invalid token`（Bearer / 裸 key / x-api-key / query key 四种都试过），已正确映射为 `AUTH_FAILED`；需重新签发后只改 `.env`。
+- ⬜ **未做**：前端原型接真实接口、图生图实测、计费口径回填。
 
 ---
 
@@ -103,7 +112,8 @@
 | 2 | 视频是否进 MVP | 进，成本结构完整；不进，M9 后移，工期 -2 周 |
 | 3 | 是否接受 MVP 单租户、无权限体系 | 接受可省约 2 周 |
 | 4 | 聚合渠道选哪家 | 决定价格、限流、能力可用性、数据条款 |
-| 5 | 模型 / 渠道接入方案何时定、定完是否补一份技术设计 | 当前仓库无该设计；渠道能力、限流、单价均以实测为准 |
+| 5 | **omyai API Key 无效（`401 Invalid token`）** | 阻塞真实出图与参数实测；需在 omyai 控制台重新签发，替换 `.env` 即可 |
+| 6 | 生图渠道的计费口径（按张 / 按次） | `gpt-image-2` 站点显示按次价格，其他两个未公开；影响单 SKU 成本核算 |
 
 ---
 

@@ -16,6 +16,7 @@
 | 这一版做什么（M1–M9）、验收标准 | [`docs/MVP需求说明-电商视觉工作台.md`](docs/MVP需求说明-电商视觉工作台.md) |
 | 完整需求（权威、只读） | [`docs/电商工作台需求说明.html`](docs/电商工作台需求说明.html) |
 | 技术架构、数据模型、任务状态机、部署与失败处理 | [`docs/技术设计/TD-001-总体技术架构.md`](docs/技术设计/TD-001-总体技术架构.md) |
+| 生图能力怎么接、怎么加模型/加渠道 | [`docs/技术设计/TD-002-生图能力接入.md`](docs/技术设计/TD-002-生图能力接入.md) |
 | **中间件地址 / 账号名 / 证书 / 运维 / 已知坑** | [`infrastructure/测试环境中间件访问说明.md`](infrastructure/测试环境中间件访问说明.md)（**密码不在仓库**，见本地 `credentials.local.md`） |
 | 当前进度、下一步、待决事项 | [`PHASE.md`](PHASE.md) |
 | 可视化原型（非权威） | `prototype/index.html` |
@@ -33,6 +34,16 @@
 | 踩过的坑（ACL inode、CRLF、TLS） | 同上 **§十一** |
 
 连接约定：**PG 与 Redis 都是明文**（PG 仍可走 TLS）；**MinIO 必须 TLS + path-style + 私有 CA**。库名用 `ec_agent_pro`（不是 `postgres`）。
+
+## 本地怎么跑（生图服务）
+
+```bash
+python -m venv .venv && .venv\Scripts\pip install -r requirements.txt   # Windows
+.venv\Scripts\python -m uvicorn apps.api.main:app --reload --port 8000
+.venv\Scripts\python scripts\smoke_image.py --list
+```
+
+密钥放 `.env`（见 `.env.example`），接口契约与扩展方式见 TD-002。
 
 ## 五条红线（细节见 README）
 
