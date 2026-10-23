@@ -43,6 +43,8 @@ class Storage(Protocol):
 
     def put(self, key: str, data: bytes, mime: str) -> StoredObject: ...
 
+    def read(self, key: str) -> bytes: ...
+
     def url_for(self, key: str) -> str: ...
 
     def exists(self, key: str) -> bool: ...
@@ -62,6 +64,9 @@ class LocalStorage:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         return StoredObject(key=key, bytes=len(data))
+
+    def read(self, key: str) -> bytes:
+        return (self.root / key).read_bytes()
 
     def url_for(self, key: str) -> str:
         return f"{self.public_base_url}/files/{key}"
@@ -110,6 +115,10 @@ class MinioStorage:
     def put(self, key: str, data: bytes, mime: str) -> StoredObject:
         self.client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=mime)
         return StoredObject(key=key, bytes=len(data))
+
+    def read(self, key: str) -> bytes:
+        resp = self.client.get_object(Bucket=self.bucket, Key=key)
+        return resp["Body"].read()
 
     def url_for(self, key: str) -> str:
         return self.client.generate_presigned_url(

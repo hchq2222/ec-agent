@@ -104,6 +104,9 @@
 - ✅ **原型：渠道与模型管理**：设置页新增渠道（名称 / 协议 / Base URL / API Key / 测试拉取模型），支持启用停用、删除、同步；制作台的场景图 / 主图 / 短视频各自可选「渠道 + 模型」，模型按 `kind` 过滤。数据存 `localStorage`，同步为模拟。
 - ✅ **后端：多渠道管理**：新增 `app.channel` 表（迁移 `0002_channel`）；API Key 用 Fernet 加密（`CHANNEL_SECRET_KEY`），接口只回显后 4 位；提供 `GET/POST/PATCH/DELETE /api/channels` 与 `/sync`；`POST /api/images/generate` 支持 `channel_id`，按渠道动态构造 provider；`GET /api/models?channel_id=` 合并渠道模型。
 - ✅ **渠道实测**：真实 omyai 渠道同步到 3 个模型；用 `channel_id` 生成成功，`job.provider_id` 与 `provider_call.provider_id` 均为渠道 UUID；DB 里 `api_key_enc` 为 Fernet 密文，非明文。
+- ✅ **生图工作台（原型）**：新增三栏页面（生成记录 / 参数面板 / 结果区），对标参考工作台；直接调真实后端 `/api/channels`、`/api/models`、`/api/images/generate`，支持参考图、渠道+模型、质量、W/H、分辨率、宽高比、张数；深链 `#genstudio`。
+- ✅ **辅助接口**：`GET /api/jobs?limit=`（生成记录，含 prompt）、`GET /api/assets/{id}/content`（图片中转）。
+- ✅ **开发模式图片代理**：`STORAGE_URL_MODE=proxy`，图片走 API 中转，绕开自签 CA 导致浏览器白图的问题；生产切回 `presign`。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 

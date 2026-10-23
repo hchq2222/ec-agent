@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     minio_region: str = "us-east-1"
     minio_ca_bundle: str = ""
     minio_presign_ttl: int = 900
+    # 图片给前端的 URL 形式：presign（预签名，推荐生产）| proxy（走 API 中转，开发用）
+    storage_url_mode: str = "presign"
 
     # 产物落盘目录（local 后端用；后续换 MinIO 只替换 storage 实现）
     output_dir: Path = Path("var/outputs")

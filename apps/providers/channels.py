@@ -74,8 +74,10 @@ def dynamic_capabilities() -> Capabilities:
     """动态渠道拿不到能力声明，给一组保守上限；真实限制由上游校验兜底。"""
     return Capabilities(
         max_n=4,
-        sizes=("auto", "1024x1024", "1536x1024", "1024x1536"),
-        qualities=("auto", "low", "medium", "high"),
+        # 动态渠道拿不到能力声明：不在这里限制尺寸/质量，交给上游校验，
+        # 避免新模型（如 2K/4K、自定义比例）被写死的能力表拦掉。
+        sizes=(),
+        qualities=(),
         output_formats=("png", "jpeg", "webp"),
         backgrounds=("auto", "opaque", "transparent"),
         image_input=True,

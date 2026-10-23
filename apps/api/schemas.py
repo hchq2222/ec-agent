@@ -27,6 +27,7 @@ class GenerateImageRequest(BaseModel):
 
 
 class GeneratedImageOut(BaseModel):
+    asset_id: str | None = None
     url: str
     mime: str
     bytes: int

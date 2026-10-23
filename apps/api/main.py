@@ -19,7 +19,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -295,7 +295,8 @@ async def get_job(job_id: str) -> JobDetailResponse:
             finished_at=row.finished_at,
             images=[
                 GeneratedImageOut(
-                    url=storage.url_for(a.object_key),  # type: ignore[union-attr]
+                    asset_id=str(a.id),
+                    url=_asset_url(a.id, a.object_key),  # type: ignore[union-attr]
                     mime=a.mime,
                     bytes=a.bytes,
                     width=a.width,
@@ -304,6 +305,102 @@ async def get_job(job_id: str) -> JobDetailResponse:
                 for a in sorted(row.assets, key=lambda x: x.idx)
             ],
         )
+
+
+def _asset_url(asset_id: Any, key: str) -> str:
+    """presign：直连 MinIO（生产推荐）；proxy：经 API 中转（开发时免装私有 CA）。"""
+    assert storage is not None
+    settings = get_settings()
+    if settings.storage_url_mode == "proxy":
+        return f"{settings.public_base_url.rstrip('/')}/api/assets/{asset_id}/content"
+    return storage.url_for(key)
+
+
+@app.get("/api/assets/{asset_id}/content")
+async def asset_content(asset_id: str) -> Any:
+    if db is None or storage is None:
+        return JSONResponse(
+            status_code=503, content={"error": {"code": "DB_UNAVAILABLE", "message": "未配置数据库或存储"}}
+        )
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=400, content={"error": {"code": "INVALID_PARAM", "message": "asset_id 不是合法 UUID"}}
+        )
+    async with db.session() as session:
+        row = await session.get(Asset, aid)
+        if row is None:
+            return JSONResponse(
+                status_code=404, content={"error": {"code": "NOT_FOUND", "message": "素材不存在"}}
+            )
+        object_key, mime = row.object_key, row.mime
+    try:
+        data = await asyncio.to_thread(storage.read, object_key)
+    except Exception:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "ARTIFACT_LOST", "message": "对象存储中找不到该文件"}},
+        )
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/api/jobs")
+async def list_jobs(limit: int = 20) -> Any:
+    """最近生成记录（工作台左栏用）。"""
+    if db is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "DB_UNAVAILABLE", "message": "未配置数据库"}},
+        )
+    assert storage is not None
+    limit = max(1, min(int(limit), 100))
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    async with db.session() as session:
+        rows = (
+            await session.execute(
+                select(Job)
+                .options(selectinload(Job.assets))
+                .order_by(Job.created_at.desc())
+                .limit(limit)
+            )
+        ).scalars().all()
+
+    return {
+        "data": [
+            {
+                "id": str(row.id),
+                "status": row.status,
+                "model": row.model_key,
+                "provider": row.provider_id,
+                "prompt": (row.params or {}).get("prompt", ""),
+                "n": row.n,
+                "latency_ms": row.latency_ms,
+                "error_code": row.error_code,
+                "error_message": row.error_message,
+                "created_at": row.created_at,
+                "images": [
+                    {
+                        "asset_id": str(a.id),
+                        "url": _asset_url(a.id, a.object_key),
+                        "mime": a.mime,
+                        "bytes": a.bytes,
+                        "width": a.width,
+                        "height": a.height,
+                    }
+                    for a in sorted(row.assets, key=lambda x: x.idx)
+                ],
+            }
+            for row in rows
+        ]
+    }
 
 
 @app.post("/api/images/generate", response_model=GenerateImageResponse)
@@ -413,7 +510,8 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
         )
         images.append(
             GeneratedImageOut(
-                url=storage.url_for(stored.key),
+                asset_id=str(asset_id),
+                url=_asset_url(asset_id, stored.key),
                 mime=img.mime,
                 bytes=stored.bytes,
                 width=width,

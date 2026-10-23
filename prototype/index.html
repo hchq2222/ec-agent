@@ -289,6 +289,42 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip-model{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--line-2);color:var(--ink);white-space:nowrap}
 
+/* 生图工作台（三栏） */
+#page-genstudio{max-width:1400px}
+.genstudio{display:grid;grid-template-columns:200px 340px 1fr;gap:14px;height:calc(100vh - 44px);min-height:540px}
+.gs-panel{background:#fff;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.gs-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.gs-head h2{font-size:14px}
+.gs-actions{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.gs-history-list{flex:1;min-height:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.gs-hist{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:6px;cursor:pointer;background:#fff;transition:.15s;text-align:left}
+.gs-hist:hover,.gs-hist.active{border-color:var(--brand)}
+.gs-hist img{width:44px;height:44px;border-radius:6px;object-fit:cover;background:var(--line-2);flex:0 0 auto}
+.gs-hist .t{font-size:11.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
+.gs-hist .s{font-size:10.5px;color:var(--muted);margin-top:2px;display:block}
+.gs-scroll{flex:1;min-height:0;overflow:auto;padding:14px}
+.gs-result-body{flex:1;min-height:0;overflow:auto;padding:12px}
+.gs-empty{height:100%;display:grid;place-items:center;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center;padding:20px}
+.gs-result-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.gs-result{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.gs-result img{width:100%;display:block;background:var(--line-2)}
+.gs-result .meta{display:flex;justify-content:space-between;gap:6px;padding:8px 10px;font-size:11px;color:var(--muted)}
+.gs-drop{border:1px dashed var(--line);border-radius:9px;padding:20px 10px;text-align:center;color:var(--muted);font-size:12px;transition:.15s}
+.gs-drop.over{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.gs-ref{position:relative;display:inline-block;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.gs-ref img{width:100%;height:100%;object-fit:cover;display:block}
+.gs-ref button{position:absolute;top:0;right:0;width:16px;height:16px;border-radius:0 0 0 6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px}
+.gs-size{display:flex;align-items:center;gap:8px}
+.gs-size label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex:1}
+.gs-size .input{padding:6px 8px}
+.seg-wrap{flex-wrap:wrap}
+.gs-ratios{display:flex;gap:6px;flex-wrap:wrap}
+.gs-ratios button{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--muted);background:#fff}
+.gs-ratios button.active{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.gs-loading{height:100%;display:grid;place-items:center;text-align:center;color:var(--muted)}
+.gs-error{border:1px solid #f1c7c7;background:#fff7f7;border-radius:10px;padding:12px;font-size:12.5px;color:#8a2b2b}
+@media(max-width:1200px){.genstudio{grid-template-columns:170px 300px 1fr}}
+
 @media(max-width:1080px){
   :root{--sidebar-w:200px}
   .nav-item .tag{display:none}
@@ -317,6 +353,9 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       </button>
       <button class="nav-item" data-page="studio">
         <span class="ico">✦</span><span>制作台</span><span class="tag">M3-M5·M9</span>
+      </button>
+      <button class="nav-item" data-page="genstudio">
+        <span class="ico">◫</span><span>生图工作台</span><span class="tag">AI</span>
       </button>
       <button class="nav-item" data-page="canvas">
         <span class="ico">✎</span><span>画布编辑器</span><span class="tag">M6</span>
@@ -429,6 +468,121 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
           </div>
         </div>
         <div id="studio-body"></div>
+      </section>
+
+      <!-- ============ PAGE: GEN STUDIO ============ -->
+      <section class="page" id="page-genstudio">
+        <div class="genstudio">
+          <aside class="gs-panel gs-history">
+            <div class="gs-head"><h2>生成记录</h2><span class="pill gray" id="gs-count">0</span></div>
+            <div class="gs-actions">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="gsNew()">＋ 新建</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="gsLoadHistory()">刷新</button>
+            </div>
+            <div class="gs-history-list" id="gs-history"></div>
+          </aside>
+
+          <section class="gs-panel gs-params">
+            <div class="gs-head">
+              <h2>生图工作台</h2>
+              <span class="pill gray" id="gs-api-state">检测中</span>
+            </div>
+            <div class="gs-scroll">
+              <div class="field">
+                <label for="gs-prompt">提示词</label>
+                <textarea class="textarea" id="gs-prompt" rows="4" placeholder="描述画面主体、风格、构图、光线和用途"></textarea>
+              </div>
+
+              <div class="field">
+                <label>参考图</label>
+                <div class="gs-drop" id="gs-drop">
+                  <span>暂无参考图，可将图片拖到这里</span>
+                </div>
+                <input type="file" id="gs-file" accept="image/*" multiple hidden onchange="gsPickFiles(this)">
+                <div class="flex" style="margin-top:8px">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="gsFromClipboard()">剪切板</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('gs-file').click()">上传</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="gsClearRefs()">清空</button>
+                </div>
+                <div class="chips" id="gs-refs"></div>
+              </div>
+
+              <div class="field">
+                <label>模型</label>
+                <div class="row cols-2">
+                  <select class="select" id="gs-channel" onchange="gsChannelChanged()"></select>
+                  <select class="select" id="gs-model"></select>
+                </div>
+                <p class="small muted" id="gs-model-hint" style="margin-top:6px">模型列表来自所选渠道的实时同步结果。</p>
+              </div>
+
+              <div class="field">
+                <label>质量</label>
+                <div class="seg seg-wrap" id="gs-quality">
+                  <button type="button" class="active" data-v="auto">自动</button>
+                  <button type="button" data-v="low">低</button>
+                  <button type="button" data-v="medium">中</button>
+                  <button type="button" data-v="high">高</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>尺寸
+                  <span class="small muted" style="font-weight:400">
+                    <input type="checkbox" id="gs-align16" style="vertical-align:-2px" onchange="gsToggleAlign(this.checked)"> 16 倍数对齐
+                  </span>
+                </label>
+                <div class="gs-size">
+                  <label>W <input class="input" id="gs-w" type="number" value="1024" min="256" max="4096" step="16"></label>
+                  <span class="muted">↔</span>
+                  <label>H <input class="input" id="gs-h" type="number" value="1024" min="256" max="4096" step="16"></label>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>分辨率</label>
+                <div class="seg seg-wrap" id="gs-res">
+                  <button type="button" data-v="1k">1k</button>
+                  <button type="button" data-v="2k">2k</button>
+                  <button type="button" data-v="4k">4k</button>
+                  <button type="button" class="active" data-v="auto">自动</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>宽高比</label>
+                <div class="gs-ratios" id="gs-ratio">
+                  <button type="button" class="active" data-v="1:1">1:1</button>
+                  <button type="button" data-v="3:2">3:2</button>
+                  <button type="button" data-v="2:3">2:3</button>
+                  <button type="button" data-v="4:3">4:3</button>
+                  <button type="button" data-v="3:4">3:4</button>
+                  <button type="button" data-v="16:9">16:9</button>
+                  <button type="button" data-v="9:16">9:16</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>张数</label>
+                <div class="seg" id="gs-n">
+                  <button type="button" class="active" data-v="1">1</button>
+                  <button type="button" data-v="2">2</button>
+                  <button type="button" data-v="4">4</button>
+                </div>
+              </div>
+
+              <button type="button" class="btn btn-primary" id="gs-generate" style="width:100%;justify-content:center" onclick="gsGenerate()">生成图片</button>
+              <p class="small muted" style="margin-top:8px" id="gs-hint">生成会调用真实渠道并产生费用。</p>
+            </div>
+          </section>
+
+          <section class="gs-panel gs-results">
+            <div class="gs-head"><h2>生成结果</h2><span class="small muted" id="gs-result-meta"></span></div>
+            <div class="gs-result-body" id="gs-results">
+              <div class="gs-empty"><div><div style="font-size:34px;line-height:1">🖼</div><p style="margin-top:10px">还没有生成图片</p></div></div>
+            </div>
+          </section>
+        </div>
       </section>
 
       <!-- ============ PAGE: CANVAS ============ -->
@@ -804,13 +958,14 @@ const checker='background-color:#fff;background-image:conic-gradient(#e5e7eb 25%
 const pitchTag=p=>{const s=p.pitch.split(/[，。,]/).filter(Boolean);return(s[2]||s[1]||s[0]||'').slice(0,6);};
 
 /* ============ 导航 ============ */
-const TITLES={overview:'工作台总览',products:'商品档案',studio:'制作台',canvas:'画布编辑器',tasks:'任务中心',assets:'素材库 / 交付',settings:'设置'};
+const TITLES={overview:'工作台总览',products:'商品档案',studio:'制作台',genstudio:'生图工作台',canvas:'画布编辑器',tasks:'任务中心',assets:'素材库 / 交付',settings:'设置'};
 $('nav').addEventListener('click',e=>{const b=e.target.closest('.nav-item');if(b)go(b.dataset.page);});
 function go(page){
   document.querySelectorAll('.nav-item').forEach(b=>{const on=b.dataset.page===page;b.classList.toggle('active',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');});
   document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+page));
   $('crumb-title').textContent=TITLES[page];
   document.querySelector('.content').scrollTop=0;
+  if(page==='genstudio')gsOnOpen();
 }
 
 /* ============ 总览：主流程 ============ */
@@ -1549,6 +1704,242 @@ function genControls(kind){
 function pickStudioChannel(id){studioChannelId=id;renderStudio();}
 function currentModel(){const el=$('gen-model');return el?el.value:'—';}
 
+/* ============ 生图工作台（真实后端） ============ */
+const GS_API=(localStorage.getItem('proto.apiBase')||'http://127.0.0.1:8000').replace(/\/$/,'');
+const gs={inited:false,online:false,channels:[],channelId:null,models:[],refs:[],quality:'auto',res:'auto',ratio:'1:1',n:1,busy:false,history:[],activeJob:null};
+
+async function gsApi(path,opts){
+  const cfg=Object.assign({headers:{'Content-Type':'application/json'}},opts||{});
+  const r=await fetch(GS_API+path,cfg);
+  let body=null;try{body=await r.json();}catch(e){}
+  if(!r.ok){
+    const err=(body&&body.error)||{};
+    throw new Error(`${err.code||('HTTP '+r.status)}：${err.message||'请求失败'}`);
+  }
+  return body;
+}
+function gsSetApiState(text,kind){
+  const el=$('gs-api-state');if(!el)return;
+  el.textContent=text;el.className='pill '+(kind||'gray');
+}
+function gsHint(msg,kind){
+  const el=$('gs-hint');if(!el)return;
+  el.textContent=msg||'生成会调用真实渠道并产生费用。';
+  el.className='small '+(kind==='red'?'':'muted');
+  if(kind==='red')el.style.color='#b23b3b';else el.style.color='';
+}
+function gsOnOpen(){
+  if(gs.inited)return;
+  gs.inited=true;
+  gsBindControls();
+  gsBindDrop();
+  gsInit();
+}
+async function gsInit(){
+  gsSetApiState('检测中','gray');
+  try{
+    await gsApi('/healthz');
+    gs.online=true;gsSetApiState('后端在线','green');
+  }catch(e){
+    gs.online=false;gsSetApiState('后端离线','red');
+    gsEmpty(`后端未启动。<br><span class="small">先在项目根目录运行：<code>.venv\\Scripts\\python -m uvicorn apps.api.main:app --port 8000</code></span>`);
+    gsHint('后端离线，无法生成。','red');
+    return;
+  }
+  await gsLoadChannels();
+  await gsLoadHistory();
+}
+async function gsLoadChannels(){
+  try{
+    const res=await gsApi('/api/channels');
+    gs.channels=(res.data||[]).filter(c=>c.enabled);
+  }catch(e){gs.channels=[];}
+  const sel=$('gs-channel');
+  if(!gs.channels.length){
+    sel.innerHTML='<option>未配置渠道</option>';
+    $('gs-model').innerHTML='<option>—</option>';
+    gsHint('还没有可用渠道：到「设置 → 渠道与模型」新增 Base URL 与 API Key。','red');
+    return;
+  }
+  sel.innerHTML=gs.channels.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  gs.channelId=gs.channels[0].id;
+  await gsLoadModels();
+}
+async function gsChannelChanged(){
+  gs.channelId=$('gs-channel').value;
+  await gsLoadModels();
+}
+async function gsLoadModels(){
+  const sel=$('gs-model');
+  try{
+    const res=await gsApi('/api/models?channel_id='+encodeURIComponent(gs.channelId));
+    gs.models=(res.data||[]).filter(m=>m.kind==='image');
+  }catch(e){gs.models=[];}
+  sel.innerHTML=gs.models.length?gs.models.map(m=>`<option value="${esc(m.key)}">${esc(m.display_name||m.key)}</option>`).join(''):'<option>该渠道暂无生图模型</option>';
+  const ch=gs.channels.find(c=>c.id===gs.channelId);
+  $('gs-model-hint').textContent=ch?`渠道「${ch.name}」· ${gs.models.length} 个生图模型（每次生成前实时读取）`:'模型列表来自所选渠道。';
+  const kvs=document.querySelectorAll('.sidebar-foot .kv .mono');
+  if(kvs.length>=2&&ch){kvs[0].textContent=ch.name;kvs[1].textContent=`${(ch.models||[]).filter(m=>m.kind==='video').length} 个视频模型`;}
+}
+function gsBindControls(){
+  const bind=(id,key)=>{
+    const el=$(id);if(!el)return;
+    el.addEventListener('click',e=>{
+      const b=e.target.closest('button');if(!b)return;
+      el.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
+      gs[key]=b.dataset.v;
+      if(key==='ratio')gsApplyRatio(b.dataset.v);
+      if(key==='res')gsApplyRes(b.dataset.v);
+    });
+  };
+  bind('gs-quality','quality');bind('gs-res','res');bind('gs-ratio','ratio');bind('gs-n','n');
+}
+function gsBase(){
+  if(gs.res==='1k')return 1024;
+  if(gs.res==='2k')return 2048;
+  if(gs.res==='4k')return 4096;
+  return 1024;
+}
+function gsApplyRatio(r){
+  const [a,b]=String(r).split(':').map(Number);
+  if(!a||!b)return;
+  const base=gsBase();
+  let w,h;
+  if(a>=b){w=base;h=Math.round(base*b/a);}else{h=base;w=Math.round(base*a/b);}
+  gsSetSize(w,h);
+}
+function gsApplyRes(v){
+  if(v==='auto')return;
+  gsApplyRatio(gs.ratio);
+}
+function gsSetSize(w,h){
+  if($('gs-align16').checked){w=Math.max(16,Math.round(w/16)*16);h=Math.max(16,Math.round(h/16)*16);}
+  $('gs-w').value=w;$('gs-h').value=h;
+}
+function gsToggleAlign(on){
+  if(on)gsSetSize(+$('gs-w').value,+$('gs-h').value);
+}
+function gsSize(){
+  const w=+$('gs-w').value,h=+$('gs-h').value;
+  return (w>0&&h>0)?`${w}x${h}`:'auto';
+}
+async function gsGenerate(){
+  if(gs.busy)return;
+  if(!gs.online){toast('后端未启动');return;}
+  const prompt=$('gs-prompt').value.trim();
+  if(!prompt){toast('请先填写提示词');return;}
+  if(!gs.channelId||!gs.models.length){toast('请先在设置里配置渠道与模型');return;}
+  const model=$('gs-model').value;
+  gs.busy=true;
+  const btn=$('gs-generate');btn.disabled=true;btn.textContent='生成中…';
+  $('gs-result-meta').textContent='';
+  $('gs-results').innerHTML=`<div class="gs-loading"><div>正在调用 <b>${esc(model)}</b>…<br><span class="small">通常 10–60 秒</span></div></div>`;
+  const body={channel_id:gs.channelId,model,prompt,n:gs.n,quality:gs.quality,size:gsSize(),output_format:'png'};
+  if(gs.refs.length)body.images=gs.refs.map(r=>r.dataUrl);
+  try{
+    const res=await gsApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
+    gsRenderResult(res);
+    await gsLoadHistory();
+  }catch(err){
+    $('gs-results').innerHTML=`<div class="gs-error"><b>生成失败</b><div style="margin-top:4px">${esc(err.message)}</div><div class="small" style="margin-top:8px">常见原因：密钥无效、模型名不存在、尺寸/质量不被上游支持。</div></div>`;
+    toast('生成失败');
+  }finally{
+    gs.busy=false;btn.disabled=false;btn.textContent='生成图片';
+  }
+}
+function gsRenderResult(res){
+  const imgs=res.images||[];
+  $('gs-result-meta').textContent=imgs.length?`${imgs.length} 张 · ${res.latency_ms}ms · ${res.model}`:'';
+  $('gs-results').innerHTML=imgs.length?`<div class="gs-result-grid">${imgs.map((im,i)=>`
+    <div class="gs-result">
+      <a href="${esc(im.url)}" target="_blank" rel="noopener"><img src="${esc(im.url)}" alt="结果 ${i+1}" loading="lazy"></a>
+      <div class="meta"><span>${im.width||'?'}×${im.height||'?'}</span><span>${Math.round((im.bytes||0)/1024)} KB</span></div>
+    </div>`).join('')}</div>`:'<div class="gs-empty">没有返回图片</div>';
+}
+async function gsLoadHistory(){
+  try{
+    const res=await gsApi('/api/jobs?limit=20');
+    gs.history=res.data||[];
+  }catch(e){gs.history=[];}
+  $('gs-count').textContent=gs.history.length;
+  $('gs-history').innerHTML=gs.history.length?gs.history.map(j=>{
+    const img=j.images&&j.images[0]?j.images[0].url:'';
+    const label=(j.prompt||j.model||'生成').slice(0,42);
+    return `<button type="button" class="gs-hist ${gs.activeJob===j.id?'active':''}" onclick="gsOpenJob('${j.id}')">
+      ${img?`<img src="${esc(img)}" alt="">`:`<span style="width:44px;height:44px;border-radius:6px;background:var(--line-2);display:grid;place-items:center;flex:0 0 auto">${j.status==='failed'?'×':'…'}</span>`}
+      <span><span class="t">${esc(label)}</span><span class="s">${esc(j.status)} · ${esc(gsFmtTime(j.created_at))}</span></span>
+    </button>`;
+  }).join(''):'<div class="notice">还没有生成记录。</div>';
+}
+async function gsOpenJob(id){
+  gs.activeJob=id;
+  const item=gs.history.find(j=>j.id===id);
+  if(item){
+    gsRenderResult({id:item.id,model:item.model,latency_ms:item.latency_ms||0,images:item.images||[]});
+    $('gs-history').querySelectorAll('.gs-hist').forEach(b=>b.classList.toggle('active',b.getAttribute('onclick')===`gsOpenJob('${id}')`));
+    return;
+  }
+  try{
+    const res=await gsApi('/api/jobs/'+id);
+    gsRenderResult({id:res.id,model:res.model,latency_ms:res.latency_ms||0,images:res.images||[]});
+  }catch(e){toast('读取任务失败');}
+}
+function gsFmtTime(iso){
+  if(!iso)return '';
+  const d=new Date(iso);
+  return isNaN(d)?'':`${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function gsEmpty(html){
+  $('gs-results').innerHTML=`<div class="gs-empty"><div><div style="font-size:34px;line-height:1">🖼</div><p style="margin-top:10px">${html||'还没有生成图片'}</p></div></div>`;
+}
+function gsNew(){
+  $('gs-prompt').value='';
+  gs.refs=[];gsRenderRefs();gs.activeJob=null;
+  $('gs-result-meta').textContent='';
+  gsEmpty();
+}
+function gsClearRefs(){gs.refs=[];gsRenderRefs();}
+function gsRenderRefs(){
+  const el=$('gs-refs');if(!el)return;
+  el.innerHTML=gs.refs.map((r,i)=>`<span class="gs-ref"><img src="${r.dataUrl}" alt="参考图 ${i+1}"><button type="button" aria-label="移除" onclick="gsRemoveRef(${i})">×</button></span>`).join('');
+}
+function gsRemoveRef(i){gs.refs.splice(i,1);gsRenderRefs();}
+function gsPickFiles(input){
+  gsReadFiles([...input.files]);
+  input.value='';
+}
+function gsReadFiles(files){
+  files.filter(f=>f.type.startsWith('image/')).slice(0,4-gs.refs.length).forEach(f=>{
+    const rd=new FileReader();
+    rd.onload=()=>{gs.refs.push({name:f.name,dataUrl:rd.result});gsRenderRefs();};
+    rd.readAsDataURL(f);
+  });
+}
+async function gsFromClipboard(){
+  try{
+    const items=await navigator.clipboard.read();
+    for(const it of items){
+      for(const type of it.types){
+        if(type.startsWith('image/')){
+          const blob=await it.getType(type);
+          const rd=new FileReader();
+          rd.onload=()=>{gs.refs.push({name:'clipboard',dataUrl:rd.result});gsRenderRefs();};
+          rd.readAsDataURL(blob);
+          return;
+        }
+      }
+    }
+    toast('剪切板里没有图片');
+  }catch(e){toast('浏览器不允许读取剪切板，请用「上传」');}
+}
+function gsBindDrop(){
+  const el=$('gs-drop');if(!el)return;
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['dragenter','dragover'].forEach(t=>el.addEventListener(t,e=>{stop(e);el.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>el.addEventListener(t,e=>{stop(e);el.classList.remove('over');}));
+  el.addEventListener('drop',e=>{if(e.dataTransfer&&e.dataTransfer.files)gsReadFiles([...e.dataTransfer.files]);});
+}
+
 /* ============ 刷新与初始化 ============ */
 function refreshAll(){
   renderKPIs();renderOverviewProducts();renderProductList();renderProductDetail();
@@ -1558,6 +1949,8 @@ document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed
 $('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k}">${t.name}</option>`).join('');
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
+const __hash=(location.hash||'').replace('#','');
+if(__hash&&TITLES[__hash])go(__hash);
 </script>
 </body>
 </html>
