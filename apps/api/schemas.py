@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,8 @@ class GeneratedImageOut(BaseModel):
     url: str
     mime: str
     bytes: int
+    width: int | None = None
+    height: int | None = None
 
 
 class GenerateImageResponse(BaseModel):
@@ -37,3 +40,18 @@ class GenerateImageResponse(BaseModel):
     images: list[GeneratedImageOut]
     latency_ms: int
     usage: dict[str, Any] = Field(default_factory=dict)
+    persisted: bool = Field(True, description="是否已写入数据库；false 表示只落盘")
+
+
+class JobDetailResponse(BaseModel):
+    id: str
+    status: str
+    model: str
+    provider: str
+    n: int
+    latency_ms: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+    images: list[GeneratedImageOut] = Field(default_factory=list)

@@ -10,10 +10,10 @@
 | 项 | 状态 |
 |---|---|
 | 阶段 | **P0 技术验证中**（架构与中间件已完成，核心验证未做） |
-| 代码 | 生图 Provider/Model 注册表、OpenAI 兼容适配器与 API 已落地；Mock 单测 11 项通过，真实渠道调用待验证 |
+| 代码 | 生图 Provider/Model 注册表、OpenAI 兼容适配器、API 与最小持久化（`job/asset/provider_call`）已落地；Mock 单测 11 项通过 |
 | 中间件 | 已就绪并通过外网实测，见 `infrastructure/测试环境中间件访问说明.md` |
-| 当前卡点 | omyai 鉴权、真实出图与计费口径未验证；M6 图层拆分路径未验证 |
-| 下一关 | ① 实测各 quality 档的耗时与计费（真实出图已于 2026-10-22 跑通） ② 图层拆分质量 ③ 10 SKU 手工跑通 |
+| 当前卡点 | 计费口径（token→金额）未回填；M6 图层拆分路径未验证 |
+| 下一关 | ① 回填计费 ② 图层拆分质量 ③ 10 SKU 手工跑通 ④ 前端接真实接口 |
 
 ---
 
@@ -93,6 +93,15 @@
 - ✅ **文档结构整理**：`README.md` 移至根目录并改为项目索引；`AGENTS.md` 精简为导航页（只留"去哪看"）；新增 `PHASE.md`；恢复 `infrastructure/测试环境中间件访问说明.md`；清理 `TD-001` 中对已移除文档的引用。
 - ⬜ **未开始**：图层拆分验证。
 
+### 2026-10-23
+
+- ✅ **补上持久化**：新增 `apps/core/db.py`、`apps/core/models.py`（`job` / `asset` / `provider_call` 三表）与 Alembic 迁移 `migrations/versions/0001_init.py`。
+- ✅ **迁移已应用**：测试库 `ec_agent_pro` 的 `app` schema 下现有 `job`、`asset`、`provider_call`、`alembic_version` 四张表（`version_num=0001_init`）。
+- ✅ **真实出图落库验证**：`gpt-image-2`、quality=low、1024×1024，耗时 38.6s；`job` / `asset` / `provider_call` 各 1 行，`GET /api/jobs/{id}` 可回查，产物 748 KB。
+- ✅ **失败也记录**：渠道异常时写 `job.failed` + `provider_call(failed, units=0)`；写库失败不影响已生成产物（响应 `persisted=false`）。
+- ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
+- ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
+
 ### 2026-10-22
 
 - ✅ **生图接入层**：落地 `apps/`（FastAPI + Provider/Model 注册表 + OpenAI 兼容 adapter），模型与渠道由 `config/providers.yaml` 驱动，新增模型只改 YAML → `docs/技术设计/TD-002-生图能力接入.md`。
@@ -114,7 +123,7 @@
 | 3 | 是否接受 MVP 单租户、无权限体系 | 接受可省约 2 周 |
 | 4 | 聚合渠道选哪家 | 决定价格、限流、能力可用性、数据条款 |
 | 5 | ~~渠道鉴权待重新验证~~ 已于 2026-10-22 解决 | 剩余：各 quality 档耗时与单价实测，回填 `providers.yaml` 的 `pricing.price` |
-| 6 | 生图渠道的计费口径（按张 / 按次） | `gpt-image-2` 站点显示按次价格，其他两个未公开；影响单 SKU 成本核算 |
+| 6 | 生图渠道的计费口径 | 实测 `usage` 为 token 口径（output image_tokens=272），非按张；需拿渠道账单换算成单张成本，回填 `price_book` |
 
 ---
 

@@ -39,6 +39,7 @@
 
 ```bash
 python -m venv .venv && .venv\Scripts\pip install -r requirements.txt   # Windows
+.venv\Scripts\python -m alembic upgrade head                            # 建表（需要 DATABASE_URL）
 .venv\Scripts\python -m uvicorn apps.api.main:app --reload --port 8000
 .venv\Scripts\python scripts\smoke_image.py --list
 ```

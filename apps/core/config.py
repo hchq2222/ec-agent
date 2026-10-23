@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # 渠道注册表
     providers_config: Path = Path("config/providers.yaml")
 
+    # PostgreSQL（为空则不落库，保持纯内存/磁盘模式）
+    # 例：postgresql+asyncpg://app_user:***@203.0.113.10:5432/ec_agent_pro
+    database_url: str = ""
+
     # 产物落盘目录（MVP 用本地盘，后续换 MinIO 只替换 storage 实现）
     output_dir: Path = Path("var/outputs")
     # 对外访问前缀，用于拼接返回给前端的 URL
