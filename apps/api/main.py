@@ -33,6 +33,7 @@ from apps.providers.base import ErrorCode, ImageRequest, ProviderError
 from apps.providers.channels import ChannelService, dynamic_capabilities, dynamic_spec
 from apps.providers.registry import Registry, validate_request
 
+from .link_parser import parse_product_link
 from .schemas import (
     ChannelCreateRequest,
     ChannelOut,
@@ -41,6 +42,7 @@ from .schemas import (
     GenerateImageResponse,
     GeneratedImageOut,
     JobDetailResponse,
+    ParseLinkRequest,
 )
 
 log = logging.getLogger("imagegen")
@@ -441,6 +443,13 @@ async def delete_job(job_id: str) -> Any:
         except Exception:
             log.warning("删除对象失败（DB 已删）: %s", key)
     return {"ok": True, "deleted_assets": len(keys)}
+
+
+@app.post("/api/products/parse-link")
+async def parse_link(payload: ParseLinkRequest) -> Any:
+    """解析商品链接，返回可编辑的字段草稿（不直接入库）。"""
+    data = await parse_product_link(payload.url)
+    return {"data": data}
 
 
 @app.post("/api/images/generate", response_model=GenerateImageResponse)

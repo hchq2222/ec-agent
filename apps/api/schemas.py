@@ -87,3 +87,6 @@ class ChannelOut(BaseModel):
     last_synced_at: datetime | None = None
     sync_error: str | None = None
     created_at: datetime
+
+class ParseLinkRequest(BaseModel):
+    url: str

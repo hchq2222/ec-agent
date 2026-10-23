@@ -110,6 +110,7 @@
 - ✅ **图生图链路打通**：参考图 data URL → `POST /api/images/generate` → 上游 `/images/edits`（`image[]`、`output_format=png` 均可用）→ 结果落 MinIO（1024×1024 / 812 KB）。⚠️ 实测商品被重绘（杯型/手柄与原图不同），确认图生图不能替代 L1 合成，需 L3 校验兜底。
 - ✅ **生成记录删除**：`DELETE /api/jobs/{id}` 同时清理 DB 行与 MinIO 对象；前端历史项加 ×（二次确认）。实测删除后列表 5→4、原图 URL 200→404、job 详情 404。
 - ✅ **结果互通**：制作台与画布编辑器增加「最近生成」横条（`GET /api/jobs?limit=8`），点击弹窗预览；导航调整为 商品档案 → 生图工作台 → 制作台。
+- ✅ **商品链接导入**：后端 `POST /api/products/parse-link`（JSON-LD → OpenGraph → 标题+价格兜底，含 SSRF 防护）；前端商品档案新增「链接导入」弹窗，解析后可编辑、选品类、一键录入，字段标 AI 待确认；新建/导入的商品写 localStorage 并记 audit。离线单测覆盖三种提取路径，SSRF 已验证。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 

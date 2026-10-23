@@ -443,7 +443,10 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <section class="page" id="page-products">
         <div class="page-head">
           <div><h1>商品档案</h1><p>一次录入真实商品资料，供后续所有制作模块调用。商品事实只来自商家资料，AI 只整理不补全。</p></div>
-          <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+          <div class="flex">
+            <button class="btn btn-soft" onclick="openLinkModal()">🔗 链接导入</button>
+            <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+          </div>
         </div>
         <div class="two-col">
           <div class="card">
@@ -752,6 +755,42 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   </div>
 </div>
 
+<div class="modal-back" id="link-modal">
+  <div class="modal" style="max-width:720px" role="dialog" aria-modal="true" aria-labelledby="lm-title">
+    <div class="modal-h"><h3 id="lm-title">链接导入商品</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('link-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="notice">粘贴商品详情页链接，自动提取名称 / 价格 / 参数。提取结果只是草稿，必须人工确认后才算录入。</div>
+      <div class="field"><label for="lk-url">商品链接</label>
+        <div class="flex">
+          <input class="input mono" id="lk-url" placeholder="https://item.taobao.com/item.htm?id=..." style="flex:1">
+          <button type="button" class="btn btn-soft" id="lk-parse" onclick="parseProductLink()">分析链接</button>
+        </div>
+      </div>
+      <div class="notice blue" id="lk-status">解析结果会显示在这里。</div>
+      <div id="lk-result" hidden>
+        <div class="row cols-2">
+          <div class="field"><label for="lk-cat">品类</label>
+            <select class="select" id="lk-cat">
+              <option value="beauty" selected>美妆个护</option>
+              <option value="home">家居日用</option>
+              <option value="digital">3C 配件</option>
+            </select>
+          </div>
+          <div class="field"><label for="lk-price">价格</label><input class="input" id="lk-price" inputmode="decimal" placeholder="0.00"></div>
+        </div>
+        <div class="field"><label for="lk-name">商品名称</label><input class="input" id="lk-name"></div>
+        <div class="field"><label for="lk-desc">描述 / 卖点</label><textarea class="textarea" id="lk-desc" rows="3"></textarea></div>
+        <div class="field"><label>提取到的参数</label><div id="lk-attrs"></div></div>
+        <div class="field" id="lk-img-wrap" hidden><label>主图</label><img id="lk-img" alt="商品主图" style="max-width:220px;border-radius:10px;border:1px solid var(--line);display:block"></div>
+      </div>
+      <div class="flex" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('link-modal')">取消</button>
+        <button type="button" class="btn btn-primary" id="lk-import" disabled onclick="importParsedProduct()">一键录入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-back" id="product-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
     <div class="modal-h"><h3 id="pm-title">新建商品</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('product-modal')">✕</button></div>
@@ -877,6 +916,12 @@ const products=[
     fields:{'尺寸':{v:'60×30×120cm',src:'human'},'材质':{v:'橡胶木',src:'ai'},'颜色':{v:'原木色',src:'human'},'安装方式':{v:'',src:'missing'}},
     skus:[{id:'s41',color:'原木色',spec:'四层',price:199}]},
 ];
+/* 原型阶段：新建/导入的商品存 localStorage，刷新后仍在 */
+function saveProducts(){try{localStorage.setItem('proto.products',JSON.stringify(products));}catch(e){}}
+try{
+  const saved=JSON.parse(localStorage.getItem('proto.products')||'[]');
+  saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
+}catch(e){}
 const pById=id=>products.find(p=>p.id===id);
 function pStatus(p){
   const s=Object.values(p.fields).map(f=>f.src);
@@ -1144,12 +1189,83 @@ function saveNewProduct(){
   const fields={};CATS[cat].fields.forEach(f=>fields[f]=draft[f]&&draft[f].v?{...draft[f]}:{v:'',src:'missing'});
   const id='p'+(products.length+1);
   products.push({id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),affected:0,fields,skus:[]});
+  saveProducts();
   audit.push({obj:name,op:'新建商品主档',from:'—',to:CATS[cat].name,who:OPERATOR,at:now()});
   closeModal('product-modal');
   $('pm-name').value='';$('pm-pitch').value='';err.hidden=true;draft={};renderNewProductFields();
   showProduct(id);refreshAll();go('products');
   const pend=Object.values(fields).filter(f=>f.src!=='human').length;
   toast(pend?`已保存，${pend} 个必填字段待补 / 待确认`:'已保存');
+}
+
+/* ============ 链接导入商品 ============ */
+let parsedLink=null;
+function openLinkModal(){
+  parsedLink=null;
+  $('lk-url').value='';
+  $('lk-result').hidden=true;
+  $('lk-import').disabled=true;
+  $('lk-status').className='notice blue';
+  $('lk-status').textContent='解析结果会显示在这里。';
+  openModal('link-modal');
+}
+async function parseProductLink(){
+  const url=$('lk-url').value.trim();
+  if(!url){toast('请填写商品链接');return;}
+  const btn=$('lk-parse');btn.disabled=true;btn.textContent='分析中…';
+  $('lk-status').className='notice blue';$('lk-status').textContent='正在抓取并解析页面…';
+  try{
+    const res=await gsApi('/api/products/parse-link',{method:'POST',body:JSON.stringify({url})});
+    parsedLink=res.data;
+    renderParsedProduct(parsedLink);
+    $('lk-status').className='notice green';
+    $('lk-status').textContent=`解析完成（来源：${parsedLink.source}）`+(parsedLink.warnings.length?'；'+parsedLink.warnings.join('；'):'');
+    $('lk-result').hidden=false;
+    $('lk-import').disabled=false;
+  }catch(e){
+    $('lk-status').className='notice red';
+    $('lk-status').textContent='解析失败：'+e.message+'。可改用「新建商品」手动录入。';
+  }finally{
+    btn.disabled=false;btn.textContent='分析链接';
+  }
+}
+function renderParsedProduct(d){
+  const p=d.product||{};
+  $('lk-name').value=p.name||'';
+  $('lk-price').value=(p.price==null?'':p.price);
+  $('lk-desc').value=p.description||'';
+  const attrs=Object.entries(p.attributes||{});
+  $('lk-attrs').innerHTML=attrs.length
+    ?`<table class="table"><tbody>${attrs.map(([k,v])=>`<tr><td style="width:120px">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`
+    :'<p class="small muted">未提取到参数，可在录入后手动补齐。</p>';
+  if(p.image){$('lk-img').src=p.image;$('lk-img-wrap').hidden=false;}
+  else{$('lk-img-wrap').hidden=true;}
+}
+function importParsedProduct(){
+  if(!parsedLink)return;
+  const cat=$('lk-cat').value;
+  const name=$('lk-name').value.trim();
+  if(!name){toast('商品名称不能为空');return;}
+  const attrs=parsedLink.product.attributes||{};
+  const fields={};
+  CATS[cat].fields.forEach(f=>{
+    const hit=Object.entries(attrs).find(([k])=>k===f||k.includes(f)||f.includes(k));
+    fields[f]=hit?{v:String(hit[1]),src:'ai'}:{v:'',src:'missing'};
+  });
+  const price=parseFloat($('lk-price').value);
+  const id='p'+(products.length+1);
+  products.push({
+    id,name,short:name.split(/\s+/).pop(),cat,
+    pitch:$('lk-desc').value.trim(),affected:0,fields,
+    skus:Number.isFinite(price)?[{id:'s'+Date.now(),color:'默认',spec:'默认',price}]:[],
+    source:'link',sourceUrl:parsedLink.url,
+  });
+  saveProducts();
+  audit.push({obj:name,op:'链接导入商品',from:parsedLink.url,to:CATS[cat].name,who:OPERATOR,at:now()});
+  closeModal('link-modal');
+  showProduct(id);refreshAll();go('products');
+  const pend=Object.values(fields).filter(f=>f.src!=='human').length;
+  toast(`已录入，${pend} 个字段待确认`);
 }
 
 /* ============ 制作台 ============ */
