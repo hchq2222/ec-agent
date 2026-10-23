@@ -107,6 +107,7 @@
 - ✅ **生图工作台（原型）**：新增三栏页面（生成记录 / 参数面板 / 结果区），对标参考工作台；直接调真实后端 `/api/channels`、`/api/models`、`/api/images/generate`，支持参考图、渠道+模型、质量、W/H、分辨率、宽高比、张数；深链 `#genstudio`。
 - ✅ **辅助接口**：`GET /api/jobs?limit=`（生成记录，含 prompt）、`GET /api/assets/{id}/content`（图片中转）。
 - ✅ **开发模式图片代理**：`STORAGE_URL_MODE=proxy`，图片走 API 中转，绕开自签 CA 导致浏览器白图的问题；生产切回 `presign`。
+- ✅ **图生图链路打通**：参考图 data URL → `POST /api/images/generate` → 上游 `/images/edits`（`image[]`、`output_format=png` 均可用）→ 结果落 MinIO（1024×1024 / 812 KB）。⚠️ 实测商品被重绘（杯型/手柄与原图不同），确认图生图不能替代 L1 合成，需 L3 校验兜底。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 
