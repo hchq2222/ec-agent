@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -26,6 +26,33 @@ JSONType = JSONB().with_variant(JSON, "sqlite")
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class Channel(Base):
+    """生图/生视频渠道。API Key 加密存储，接口只回显后 4 位。"""
+
+    __tablename__ = "channel"
+    __table_args__ = (
+        Index("ix_channel_enabled", "enabled"),
+        Index("ix_channel_created_at", "created_at"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), default="openai_compat", nullable=False)
+    base_url: Mapped[str] = mapped_column(String(256), nullable=False)
+    api_key_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # [{"id": "gpt-image-2", "kind": "image"}]
+    models: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
 
 
 class Job(Base):

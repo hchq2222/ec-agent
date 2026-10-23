@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class GenerateImageRequest(BaseModel):
     model: str = Field(..., description="模型 key，见 GET /api/models")
+    channel_id: str | None = Field(None, description="渠道 id；不传则用 YAML 配置里的内置渠道")
     prompt: str
     n: int = 1
     size: str | None = None
@@ -55,3 +56,33 @@ class JobDetailResponse(BaseModel):
     created_at: datetime
     finished_at: datetime | None = None
     images: list[GeneratedImageOut] = Field(default_factory=list)
+
+
+class ChannelCreateRequest(BaseModel):
+    name: str
+    base_url: str
+    api_key: str
+    type: str = "openai_compat"
+    enabled: bool = True
+    auto_sync: bool = True
+
+
+class ChannelUpdateRequest(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    type: str | None = None
+    enabled: bool | None = None
+
+
+class ChannelOut(BaseModel):
+    id: str
+    name: str
+    type: str
+    base_url: str
+    api_key_masked: str
+    enabled: bool
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    last_synced_at: datetime | None = None
+    sync_error: str | None = None
+    created_at: datetime

@@ -178,3 +178,8 @@ class Registry:
     async def aclose(self) -> None:
         for p in self._providers.values():
             await p.aclose()
+
+
+def validate_request(req: ImageRequest, spec: ModelSpec) -> None:
+    """供 YAML 模型与动态渠道模型共用的参数/能力校验。"""
+    Registry._validate(req, spec)

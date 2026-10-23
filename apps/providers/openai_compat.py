@@ -57,11 +57,13 @@ class OpenAICompatProvider:
         api_key_env: str,
         timeout_s: float = 180.0,
         client: httpx.AsyncClient | None = None,
+        api_key: str | None = None,
     ) -> None:
         self.id = provider_id
         self.base_url = base_url.rstrip("/")
         self.api_key_env = api_key_env
         self.timeout_s = timeout_s
+        self._api_key = api_key
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
 
@@ -181,7 +183,7 @@ class OpenAICompatProvider:
         return resp
 
     def _auth_headers(self) -> dict[str, str]:
-        key = os.environ.get(self.api_key_env, "").strip()
+        key = (self._api_key or os.environ.get(self.api_key_env, "")).strip()
         if not key:
             raise ProviderError(
                 ErrorCode.AUTH_FAILED,

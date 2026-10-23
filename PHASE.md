@@ -101,7 +101,9 @@
 - ✅ **失败也记录**：渠道异常时写 `job.failed` + `provider_call(failed, units=0)`；写库失败不影响已生成产物（响应 `persisted=false`）。
 - ✅ **MinIO 存储**：`STORAGE_BACKEND=minio`，新图直接写 `assets` 桶，key 为 `{tenant}/{yyyy}/{mm}/{asset_id}/generated.png`，返回 900s 预签名 URL；本地盘只在无 MinIO 时兜底。
 - ✅ **历史产物回填**：`scripts/backfill_to_minio.py --apply` 把本地 1 张历史图补传 MinIO 并更新 `asset.object_key`；回填图与新生成的图均可通过预签名 URL 下载（200，PNG 头正确）。
-- ✅ **原型：渠道与模型管理**：设置页新增渠道（名称 / 协议 / Base URL / API Key / 测试拉取模型），支持启用停用、删除、同步；制作台的场景图 / 主图 / 短视频各自可选「渠道 + 模型」，模型按 `kind` 过滤。数据存 `localStorage`，同步为模拟。后端 `channel` 表与动态模型接口待实现（设计见 TD-002 §3.9）。
+- ✅ **原型：渠道与模型管理**：设置页新增渠道（名称 / 协议 / Base URL / API Key / 测试拉取模型），支持启用停用、删除、同步；制作台的场景图 / 主图 / 短视频各自可选「渠道 + 模型」，模型按 `kind` 过滤。数据存 `localStorage`，同步为模拟。
+- ✅ **后端：多渠道管理**：新增 `app.channel` 表（迁移 `0002_channel`）；API Key 用 Fernet 加密（`CHANNEL_SECRET_KEY`），接口只回显后 4 位；提供 `GET/POST/PATCH/DELETE /api/channels` 与 `/sync`；`POST /api/images/generate` 支持 `channel_id`，按渠道动态构造 provider；`GET /api/models?channel_id=` 合并渠道模型。
+- ✅ **渠道实测**：真实 omyai 渠道同步到 3 个模型；用 `channel_id` 生成成功，`job.provider_id` 与 `provider_call.provider_id` 均为渠道 UUID；DB 里 `api_key_enc` 为 Fernet 密文，非明文。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 

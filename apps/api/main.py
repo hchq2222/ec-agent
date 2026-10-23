@@ -27,12 +27,16 @@ from fastapi.staticfiles import StaticFiles
 from apps.core.config import get_settings
 from apps.core.db import Database
 from apps.core.imageinfo import image_size
-from apps.core.models import Asset, Job, ProviderCall, utcnow
+from apps.core.models import Asset, Channel, Job, ProviderCall, utcnow
 from apps.core.storage import build_object_key, build_storage
 from apps.providers.base import ErrorCode, ImageRequest, ProviderError
-from apps.providers.registry import Registry
+from apps.providers.channels import ChannelService, dynamic_capabilities, dynamic_spec
+from apps.providers.registry import Registry, validate_request
 
 from .schemas import (
+    ChannelCreateRequest,
+    ChannelOut,
+    ChannelUpdateRequest,
     GenerateImageRequest,
     GenerateImageResponse,
     GeneratedImageOut,
@@ -56,11 +60,12 @@ _STATUS_BY_CODE = {
 registry: Registry | None = None
 storage: Any | None = None
 db: Database | None = None
+channel_service: ChannelService | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global registry, storage, db
+    global registry, storage, db, channel_service
     settings = get_settings()
     logging.basicConfig(level=settings.log_level)
     registry = Registry.from_file(settings.providers_config)
@@ -69,6 +74,10 @@ async def lifespan(app: FastAPI):
     if settings.database_url:
         db = Database(settings.database_url)
         log.info("database enabled: %s", settings.database_url.split("@")[-1])
+        if settings.channel_secret_key:
+            channel_service = ChannelService(db, settings.channel_secret_key)
+        else:
+            log.warning("未配置 CHANNEL_SECRET_KEY：渠道管理接口不可用")
     else:
         log.warning("DATABASE_URL 未配置：本次运行不落库（仅落盘）")
 
@@ -110,10 +119,144 @@ async def healthz() -> dict[str, Any]:
     }
 
 
+def _caps_dict(c: Any) -> dict[str, Any]:
+    return {
+        "max_n": c.max_n,
+        "sizes": list(c.sizes),
+        "qualities": list(c.qualities),
+        "output_formats": list(c.output_formats),
+        "backgrounds": list(c.backgrounds),
+        "image_input": c.image_input,
+        "mask": c.mask,
+        "max_ref_images": c.max_ref_images,
+    }
+
+
 @app.get("/api/models")
-async def list_models(kind: str | None = None) -> dict[str, Any]:
+async def list_models(
+    kind: str | None = None,
+    channel_id: str | None = None,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """内置（YAML）模型 + 数据库渠道模型的合并列表。
+
+    传 channel_id 只看该渠道；该渠道尚未同步过模型时会自动拉一次。
+    """
     assert registry is not None
-    return {"data": registry.catalog(kind)}
+    data: list[dict[str, Any]] = []
+
+    if not channel_id:
+        for item in registry.catalog(kind):
+            entry = dict(item)
+            entry["channel_id"] = item["provider"]
+            entry["source"] = "config"
+            data.append(entry)
+
+    if channel_service is not None:
+        channels = await channel_service.list()
+        if channel_id:
+            channels = [c for c in channels if str(c.id) == channel_id]
+        for ch in channels:
+            if not ch.enabled:
+                continue
+            if (refresh or not ch.models) and ch.enabled:
+                try:
+                    ch = await channel_service.sync(str(ch.id))
+                except ProviderError:
+                    pass
+            for m in ch.models or []:
+                if kind and m.get("kind") != kind:
+                    continue
+                caps = dynamic_capabilities()
+                data.append(
+                    {
+                        "key": m["id"],
+                        "model": m["id"],
+                        "provider": str(ch.id),
+                        "channel_id": str(ch.id),
+                        "channel_name": ch.name,
+                        "source": "channel",
+                        "kind": m.get("kind", "image"),
+                        "display_name": m["id"],
+                        "capabilities": _caps_dict(caps),
+                        "pricing": {},
+                    }
+                )
+
+    return {"data": data}
+
+
+@app.get("/api/channels")
+async def list_channels() -> Any:
+    if channel_service is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "CHANNEL_UNAVAILABLE", "message": "未配置 CHANNEL_SECRET_KEY 或数据库"}},
+        )
+    rows = await channel_service.list()
+    return {"data": [channel_service.to_dict(c) for c in rows]}
+
+
+@app.post("/api/channels", status_code=201)
+async def create_channel(payload: ChannelCreateRequest) -> Any:
+    if channel_service is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "CHANNEL_UNAVAILABLE", "message": "未配置 CHANNEL_SECRET_KEY 或数据库"}},
+        )
+    ch = await channel_service.create(
+        name=payload.name,
+        base_url=payload.base_url,
+        api_key=payload.api_key,
+        type=payload.type,
+        enabled=payload.enabled,
+    )
+    if payload.auto_sync and db is not None:
+        try:
+            ch = await channel_service.sync(str(ch.id))
+        except ProviderError as exc:
+            # 创建成功但同步失败：把错误写回，前端能看到「同步失败」而不是"渠道不存在"
+            async with db.session() as session:
+                row = await session.get(Channel, ch.id)
+                if row is not None:
+                    row.sync_error = f"{exc.code.value}: {exc.message[:500]}"
+                    await session.commit()
+            ch = await channel_service.get(str(ch.id))
+    return {"data": channel_service.to_dict(ch)}
+
+
+@app.patch("/api/channels/{channel_id}")
+async def update_channel(channel_id: str, payload: ChannelUpdateRequest) -> Any:
+    if channel_service is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "CHANNEL_UNAVAILABLE", "message": "未配置 CHANNEL_SECRET_KEY 或数据库"}},
+        )
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    ch = await channel_service.update(channel_id, **fields)
+    return {"data": channel_service.to_dict(ch)}
+
+
+@app.delete("/api/channels/{channel_id}")
+async def delete_channel(channel_id: str) -> Any:
+    if channel_service is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "CHANNEL_UNAVAILABLE", "message": "未配置 CHANNEL_SECRET_KEY 或数据库"}},
+        )
+    await channel_service.delete(channel_id)
+    return {"ok": True}
+
+
+@app.post("/api/channels/{channel_id}/sync")
+async def sync_channel(channel_id: str) -> Any:
+    if channel_service is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "CHANNEL_UNAVAILABLE", "message": "未配置 CHANNEL_SECRET_KEY 或数据库"}},
+        )
+    ch = await channel_service.sync(channel_id)
+    return {"data": channel_service.to_dict(ch)}
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobDetailResponse)
@@ -168,8 +311,25 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
     assert registry is not None and storage is not None
     settings = get_settings()
 
-    # 先解析模型（未知模型直接 404，不产生 job 记录）
-    spec = registry.get_model(payload.model)
+    # 先解析模型（未知模型 / 渠道不存在直接报错，不产生 job 记录）
+    channel = None
+    if payload.channel_id:
+        if channel_service is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "code": "CHANNEL_UNAVAILABLE",
+                        "message": "未配置 CHANNEL_SECRET_KEY 或数据库",
+                    }
+                },
+            )
+        channel = await channel_service.get(payload.channel_id)
+        if not channel.enabled:
+            raise ProviderError(ErrorCode.INVALID_PARAM, "渠道已停用")
+        spec = dynamic_spec(channel, payload.model)
+    else:
+        spec = registry.get_model(payload.model)
 
     job_id = uuid.uuid4()
     params = {
@@ -214,7 +374,15 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
     )
 
     try:
-        result = await registry.generate(req)
+        if channel is not None:
+            provider = channel_service.provider(channel)  # type: ignore[union-attr]
+            try:
+                validate_request(req, spec)
+                result = await provider.generate(req, spec)
+            finally:
+                await provider.aclose()
+        else:
+            result = await registry.generate(req)
     except ProviderError as exc:
         if db is not None:
             await _mark_failed(job_id, spec, exc)

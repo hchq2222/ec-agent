@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # 例：postgresql+asyncpg://app_user:***@203.0.113.10:5432/ec_agent_pro
     database_url: str = ""
 
+    # 渠道 API Key 的加密密钥（Fernet 派生），不配置则渠道管理不可用
+    channel_secret_key: str = ""
+
     # 产物存储：local（本地盘）| minio（S3 协议，TD-001 的二进制真源）
     storage_backend: str = "local"
     minio_endpoint: str = ""
