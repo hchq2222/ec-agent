@@ -49,6 +49,8 @@ class Storage(Protocol):
 
     def exists(self, key: str) -> bool: ...
 
+    def delete(self, key: str) -> None: ...
+
 
 class LocalStorage:
     """本地磁盘，开发兜底。key 直接当相对路径用。"""
@@ -73,6 +75,9 @@ class LocalStorage:
 
     def exists(self, key: str) -> bool:
         return (self.root / key).exists()
+
+    def delete(self, key: str) -> None:
+        (self.root / key).unlink(missing_ok=True)
 
     # 兼容旧调用（第一版 API 用过）
     def save(self, data: bytes, ext: str, prefix: str = "img") -> StoredObject:
@@ -133,6 +138,9 @@ class MinioStorage:
             return True
         except Exception:
             return False
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)
 
 
 def build_storage(settings) -> Storage:

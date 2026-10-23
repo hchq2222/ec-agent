@@ -311,6 +311,16 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .gs-result .meta{display:flex;justify-content:space-between;gap:6px;padding:8px 10px;font-size:11px;color:var(--muted)}
 .gs-drop{border:1px dashed var(--line);border-radius:9px;padding:20px 10px;text-align:center;color:var(--muted);font-size:12px;transition:.15s}
 .gs-drop.over{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.gs-hist-wrap{position:relative}
+.gs-del{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:6px;background:rgba(17,24,39,.55);color:#fff;font-size:12px;line-height:18px;text-align:center;opacity:.35;transition:.15s}
+.gs-hist-wrap:hover .gs-del,.gs-del:focus{opacity:1}
+.gs-recent{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+.gs-recent-item{flex:0 0 auto;width:104px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff;text-align:left;transition:.15s}
+.gs-recent-item:hover{border-color:var(--brand)}
+.gs-recent-item img{width:100%;height:82px;object-fit:cover;display:block;background:var(--line-2)}
+.gs-recent-ph{display:grid;place-items:center;height:82px;background:var(--line-2);color:var(--muted);font-size:11px}
+.gs-recent-label{display:block;padding:5px 7px;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 .gs-ref{position:relative;display:inline-block;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
 .gs-ref img{width:100%;height:100%;object-fit:cover;display:block}
 .gs-ref button{position:absolute;top:0;right:0;width:16px;height:16px;border-radius:0 0 0 6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px}
@@ -351,11 +361,11 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <button class="nav-item" data-page="products">
         <span class="ico">▤</span><span>商品档案</span><span class="tag">M1·M2</span>
       </button>
-      <button class="nav-item" data-page="studio">
-        <span class="ico">✦</span><span>制作台</span><span class="tag">M3-M5·M9</span>
-      </button>
       <button class="nav-item" data-page="genstudio">
         <span class="ico">◫</span><span>生图工作台</span><span class="tag">AI</span>
+      </button>
+      <button class="nav-item" data-page="studio">
+        <span class="ico">✦</span><span>制作台</span><span class="tag">M3-M5·M9</span>
       </button>
       <button class="nav-item" data-page="canvas">
         <span class="ico">✎</span><span>画布编辑器</span><span class="tag">M6</span>
@@ -466,6 +476,10 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
               <button data-step="3">④ 短视频</button>
             </div>
           </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h3>最近生成</h3><span class="sub">来自生图工作台 · 点击预览</span></div>
+          <div class="card-b"><div class="gs-recent" id="studio-recent"></div></div>
         </div>
         <div id="studio-body"></div>
       </section>
@@ -600,6 +614,10 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
             <button class="btn btn-primary btn-sm" id="btn-save" onclick="saveVersion()">保存版本</button>
           </div>
         </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h3>最近生成</h3><span class="sub">来自生图工作台 · 点击预览</span></div>
+          <div class="card-b"><div class="gs-recent" id="canvas-recent"></div></div>
+        </div>
         <div class="three-col">
           <div class="card"><div class="card-h"><h3 id="left-title">图层</h3></div><div class="card-b" id="layer-list"></div></div>
           <div class="card"><div class="card-h"><h3>画布</h3><span class="sub" id="canvas-sub"></span></div><div class="card-b"><div class="canvas-wrap" id="canvas-area"></div></div></div>
@@ -699,6 +717,20 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 </div>
 
 <!-- ============ MODALS ============ -->
+<div class="modal-back" id="asset-modal">
+  <div class="modal" style="max-width:760px" role="dialog" aria-modal="true" aria-labelledby="am-title">
+    <div class="modal-h"><h3 id="am-title">查看生成结果</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('asset-modal')">✕</button></div>
+    <div class="modal-b">
+      <img id="asset-modal-img" alt="生成结果" style="width:100%;border-radius:10px;border:1px solid var(--line);display:block">
+      <p class="small muted" id="asset-modal-meta" style="margin-top:10px"></p>
+      <div class="flex" style="justify-content:flex-end;margin-top:12px">
+        <a class="btn btn-ghost" id="asset-modal-open" target="_blank" rel="noopener">新窗口打开</a>
+        <button type="button" class="btn btn-primary" onclick="closeModal('asset-modal')">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-back" id="channel-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cm-title">
     <div class="modal-h"><h3 id="cm-title">新增渠道</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('channel-modal')">✕</button></div>
@@ -967,6 +999,7 @@ function go(page){
   $('crumb-title').textContent=TITLES[page];
   document.querySelector('.content').scrollTop=0;
   if(page==='genstudio')gsOnOpen();
+  if(page==='studio'||page==='canvas')gsLoadRecent();
 }
 
 /* ============ 总览：主流程 ============ */
@@ -1841,6 +1874,7 @@ async function gsGenerate(){
     const res=await gsApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
     gsRenderResult(res);
     await gsLoadHistory();
+    await gsLoadRecent();
   }catch(err){
     $('gs-results').innerHTML=`<div class="gs-error"><b>生成失败</b><div style="margin-top:4px">${esc(err.message)}</div><div class="small" style="margin-top:8px">常见原因：密钥无效、模型名不存在、尺寸/质量不被上游支持。</div></div>`;
     toast('生成失败');
@@ -1866,10 +1900,13 @@ async function gsLoadHistory(){
   $('gs-history').innerHTML=gs.history.length?gs.history.map(j=>{
     const img=j.images&&j.images[0]?j.images[0].url:'';
     const label=(j.prompt||j.model||'生成').slice(0,42);
-    return `<button type="button" class="gs-hist ${gs.activeJob===j.id?'active':''}" onclick="gsOpenJob('${j.id}')">
-      ${img?`<img src="${esc(img)}" alt="">`:`<span style="width:44px;height:44px;border-radius:6px;background:var(--line-2);display:grid;place-items:center;flex:0 0 auto">${j.status==='failed'?'×':'…'}</span>`}
-      <span><span class="t">${esc(label)}</span><span class="s">${esc(j.status)} · ${esc(gsFmtTime(j.created_at))}</span></span>
-    </button>`;
+    return `<div class="gs-hist-wrap">
+      <button type="button" class="gs-hist ${gs.activeJob===j.id?'active':''}" onclick="gsOpenJob('${j.id}')">
+        ${img?`<img src="${esc(img)}" alt="">`:`<span style="width:44px;height:44px;border-radius:6px;background:var(--line-2);display:grid;place-items:center;flex:0 0 auto">${j.status==='failed'?'×':'…'}</span>`}
+        <span><span class="t">${esc(label)}</span><span class="s">${esc(j.status)} · ${esc(gsFmtTime(j.created_at))}</span></span>
+      </button>
+      <button type="button" class="gs-del" title="删除这条记录及其图片" aria-label="删除" onclick="gsDeleteJob(event,'${j.id}')">×</button>
+    </div>`;
   }).join(''):'<div class="notice">还没有生成记录。</div>';
 }
 async function gsOpenJob(id){
@@ -1884,6 +1921,54 @@ async function gsOpenJob(id){
     const res=await gsApi('/api/jobs/'+id);
     gsRenderResult({id:res.id,model:res.model,latency_ms:res.latency_ms||0,images:res.images||[]});
   }catch(e){toast('读取任务失败');}
+}
+let gsRecentCache=[];
+async function gsDeleteJob(ev,id){
+  if(ev){ev.stopPropagation();ev.preventDefault();}
+  const item=gs.history.find(j=>j.id===id);
+  const label=((item&&item.prompt)||'这条生成记录').slice(0,40);
+  if(!confirm(`删除「${label}」及其图片？`))return;
+  try{
+    await gsApi('/api/jobs/'+id,{method:'DELETE'});
+    if(gs.activeJob===id){gs.activeJob=null;gsEmpty();$('gs-result-meta').textContent='';}
+    await gsLoadHistory();
+    await gsLoadRecent();
+    toast('已删除');
+  }catch(e){toast('删除失败：'+e.message);}
+}
+async function gsLoadRecent(){
+  try{gsRecentCache=(await gsApi('/api/jobs?limit=8')).data||[];}catch(e){gsRecentCache=[];}
+  ['studio-recent','canvas-recent'].forEach(id=>{
+    const el=$(id);if(!el)return;
+    el.innerHTML=gsRecentCache.length?gsRecentCache.map(j=>{
+      const im=(j.images||[])[0];
+      const label=(j.prompt||j.model||'生成');
+      return `<button type="button" class="gs-recent-item" title="${esc(label)}" onclick="gsOpenPreview('${j.id}',0)">
+        ${im?`<img src="${esc(im.url)}" alt="">`:'<span class="gs-recent-ph">无图</span>'}
+        <span class="gs-recent-label">${esc(label.slice(0,16))}</span>
+      </button>`;
+    }).join(''):'<span class="small muted">还没有生成结果，去「生图工作台」生成一张。</span>';
+  });
+}
+function gsOpenPreview(jobId,idx){
+  const j=gsRecentCache.find(x=>x.id===jobId);
+  if(!j)return;
+  const im=(j.images||[])[idx||0];
+  if(!im){toast('这条记录没有图片');return;}
+  $('asset-modal-img').src=im.url;
+  $('asset-modal-open').href=im.url;
+  $('asset-modal-meta').textContent=`${j.prompt||j.model} · ${im.width||'?'}×${im.height||'?'} · ${Math.round((im.bytes||0)/1024)} KB · ${gsFmtTime(j.created_at)}`;
+  openModal('asset-modal');
+}
+async function refreshSidebarModels(){
+  try{
+    const chans=(await gsApi('/api/channels')).data||[];
+    const ch=chans.find(c=>c.enabled)||chans[0];
+    const kvs=document.querySelectorAll('.sidebar-foot .kv .mono');
+    if(!ch||kvs.length<2)return;
+    kvs[0].textContent=ch.name;
+    kvs[1].textContent=`${(ch.models||[]).filter(m=>m.kind==='video').length} 个视频模型`;
+  }catch(e){}
 }
 function gsFmtTime(iso){
   if(!iso)return '';
@@ -1950,6 +2035,7 @@ document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed
 $('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k}">${t.name}</option>`).join('');
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
+refreshSidebarModels();
 const __hash=(location.hash||'').replace('#','');
 if(__hash&&TITLES[__hash])go(__hash);
 </script>

@@ -108,6 +108,8 @@
 - ✅ **辅助接口**：`GET /api/jobs?limit=`（生成记录，含 prompt）、`GET /api/assets/{id}/content`（图片中转）。
 - ✅ **开发模式图片代理**：`STORAGE_URL_MODE=proxy`，图片走 API 中转，绕开自签 CA 导致浏览器白图的问题；生产切回 `presign`。
 - ✅ **图生图链路打通**：参考图 data URL → `POST /api/images/generate` → 上游 `/images/edits`（`image[]`、`output_format=png` 均可用）→ 结果落 MinIO（1024×1024 / 812 KB）。⚠️ 实测商品被重绘（杯型/手柄与原图不同），确认图生图不能替代 L1 合成，需 L3 校验兜底。
+- ✅ **生成记录删除**：`DELETE /api/jobs/{id}` 同时清理 DB 行与 MinIO 对象；前端历史项加 ×（二次确认）。实测删除后列表 5→4、原图 URL 200→404、job 详情 404。
+- ✅ **结果互通**：制作台与画布编辑器增加「最近生成」横条（`GET /api/jobs?limit=8`），点击弹窗预览；导航调整为 商品档案 → 生图工作台 → 制作台。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 

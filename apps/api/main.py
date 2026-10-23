@@ -403,6 +403,46 @@ async def list_jobs(limit: int = 20) -> Any:
     }
 
 
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str) -> Any:
+    """删除一次生成记录：DB 行 + 对象存储里的产物。"""
+    if db is None or storage is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"code": "DB_UNAVAILABLE", "message": "未配置数据库或存储"}},
+        )
+    try:
+        jid = uuid.UUID(job_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=400, content={"error": {"code": "INVALID_PARAM", "message": "job_id 不是合法 UUID"}}
+        )
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    async with db.session() as session:
+        row = (
+            await session.execute(
+                select(Job).options(selectinload(Job.assets)).where(Job.id == jid)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return JSONResponse(
+                status_code=404, content={"error": {"code": "NOT_FOUND", "message": "任务不存在"}}
+            )
+        keys = [a.object_key for a in row.assets]
+        await session.delete(row)
+        await session.commit()
+
+    for key in keys:
+        try:
+            await asyncio.to_thread(storage.delete, key)
+        except Exception:
+            log.warning("删除对象失败（DB 已删）: %s", key)
+    return {"ok": True, "deleted_assets": len(keys)}
+
+
 @app.post("/api/images/generate", response_model=GenerateImageResponse)
 async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse:
     assert registry is not None and storage is not None
