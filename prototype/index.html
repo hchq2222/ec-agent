@@ -277,6 +277,18 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1f2430;color:#fff;font-size:13px;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow-lg);z-index:80;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 
+/* 渠道与模型 */
+.channel{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--line)}
+.channel:first-child{border-top:0;padding-top:2px}
+.channel-ico{width:34px;height:34px;border-radius:9px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;flex:0 0 auto}
+.channel-main{flex:1;min-width:0}
+.channel-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.channel-name{font-weight:600;font-size:13.5px}
+.channel-url{font-size:11.5px;color:var(--muted);word-break:break-all;margin-top:2px}
+.channel-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip-model{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--line-2);color:var(--ink);white-space:nowrap}
+
 @media(max-width:1080px){
   :root{--sidebar-w:200px}
   .nav-item .tag{display:none}
@@ -501,10 +513,13 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
             </div>
           </div>
           <div class="card">
-            <div class="card-h"><h3>模型配置</h3><span class="sub">MVP 1 个生图 + 1 个生视频，不做路由</span></div>
+            <div class="card-h">
+              <h3>渠道与模型</h3>
+              <button type="button" class="btn btn-primary btn-sm" onclick="openChannelModal()">＋ 新增渠道</button>
+            </div>
             <div class="card-b">
-              <div class="field"><label for="set-img">生图模型</label><select class="select" id="set-img" disabled><option>img-gen-v1（MVP 固定，不做路由）</option></select></div>
-              <div class="field"><label for="set-vid">生视频模型</label><select class="select" id="set-vid" disabled><option>vid-gen-v1（MVP 固定，不做路由）</option></select></div>
+              <p class="small muted" style="margin-bottom:4px">每次生成时按渠道实时拉取模型列表，新增模型不用改代码。API Key 由服务端加密保存。</p>
+              <div id="channel-list"></div>
               <hr class="hr">
               <div class="field"><label>一致性校验（L3 五项，MVP 只自动做 2 项）</label>
                 <table class="table">
@@ -529,6 +544,27 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 </div>
 
 <!-- ============ MODALS ============ -->
+<div class="modal-back" id="channel-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cm-title">
+    <div class="modal-h"><h3 id="cm-title">新增渠道</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('channel-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="notice">API Key 只在服务端加密保存，前端不回显。原型阶段只演示交互，不会真的发出请求。</div>
+      <div class="row cols-2">
+        <div class="field"><label for="cm-name">渠道名称<span class="req">*</span></label><input class="input" id="cm-name" placeholder="例如：omyai / 火山方舟"></div>
+        <div class="field"><label for="cm-type">协议类型</label><select class="select" id="cm-type"><option value="openai">OpenAI 兼容</option><option value="ark">火山方舟</option><option value="custom">自定义</option></select></div>
+      </div>
+      <div class="field"><label for="cm-base">Base URL<span class="req">*</span></label><input class="input mono" id="cm-base" placeholder="https://example.com/v1"></div>
+      <div class="field"><label for="cm-key">API Key<span class="req">*</span></label><input class="input mono" id="cm-key" type="password" placeholder="sk-..."></div>
+      <div class="notice blue" id="cm-test-result">填写后点「测试并拉取模型」。</div>
+      <div class="flex" style="justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-ghost" onclick="closeModal('channel-modal')">取消</button>
+        <button class="btn btn-soft" onclick="testChannel()">测试并拉取模型</button>
+        <button class="btn btn-primary" onclick="saveChannel()">保存渠道</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-back" id="product-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
     <div class="modal-h"><h3 id="pm-title">新建商品</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('product-modal')">✕</button></div>
@@ -954,7 +990,7 @@ function checkList(p,extra=[]){
   return `<ul class="checklist">${[...CATS[p.cat].checks.map(c=>c+'与原图一致'),...extra].map((c,i)=>`<li>
     <input type="checkbox" id="ck-${studioStep}-${i}" style="margin-top:3px"><label for="ck-${studioStep}-${i}" style="margin:0;font-weight:400">${c}</label></li>`).join('')}</ul>`;
 }
-function submitGen(what){toast(`原型：已提交「${what}」到任务中心，提交前会显示费用估算`);}
+function submitGen(what){const ch=studioChannel();toast(`原型：用「${ch?ch.name:'未选渠道'} / ${currentModel()}」提交「${what}」，提交前会显示费用估算`);}
 function renderStudio(){
   $('studio-product').innerHTML=products.map(p=>`<option value="${p.id}" ${p.id===studioPid?'selected':''}>${esc(p.name)}</option>`).join('');
   const p=pById(studioPid), sub=CATS[p.cat].subject, ok=canGenerate(p), dis=ok?'':'disabled';
@@ -996,6 +1032,7 @@ function renderStudio(){
             </div>
           </div>
           <div class="field"><label>构图偏好</label>${seg(['居中','三分法','留白'])}</div>
+          ${genControls('image')}
           <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('场景图 4 张')">✦ 生成 4 张候选</button>
         </div>
       </div>
@@ -1040,6 +1077,7 @@ function renderStudio(){
             </ul>
             ${checkList(p,['缩略图尺寸下可识别商品'])}
           </div>
+          ${genControls('image')}
           <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('主图 3 张')">生成 3 张候选</button>
         </div>
       </div>
@@ -1064,6 +1102,7 @@ function renderStudio(){
             <div class="field"><label>BGM</label>${seg(['轻快','无'])}</div>
           </div>
           <div class="notice">视频成本约占全套 80%，MVP 只做这一种形态，目的是测准成本。</div>
+          ${genControls('video')}
           <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" ${dis} onclick="submitGen('15s 展示视频')">生成 15s 视频</button>
         </div>
       </div>
@@ -1399,13 +1438,125 @@ function renderExport(){
     <p class="small muted" style="margin-top:10px">只导出已确认版本。尺寸为示例规格；文件名中 {sku} 替换为 SKU 编码。</p>`;
 }
 
+/* ============ 渠道与模型 ============ */
+let channels=[
+  {id:'omyai',name:'omyai',type:'openai',base:'https://omyai.vip/v1',key:'sk-••••••••••',enabled:true,
+   syncedAt:'2026-10-23 14:20',
+   models:[{id:'gpt-image-2',kind:'image'},{id:'gpt-image-2.5-flare',kind:'image'},{id:'gpt-image-2.5-sunburst',kind:'image'}]},
+  {id:'ark',name:'火山方舟',type:'ark',base:'https://ark.cn-beijing.volces.com/api/v3',key:'',enabled:false,
+   syncedAt:'—',models:[]}
+];
+let studioChannelId=null, pendingModels=[];
+
+try{const saved=localStorage.getItem('proto.channels');if(saved)channels=JSON.parse(saved);}catch(e){}
+function saveChannels(){try{localStorage.setItem('proto.channels',JSON.stringify(channels));}catch(e){}}
+function activeChannel(){return channels.find(c=>c.enabled)||channels[0]||null;}
+function studioChannel(){return channels.find(c=>c.id===studioChannelId&&c.enabled)||activeChannel();}
+
+function renderChannels(){
+  const el=$('channel-list');if(!el)return;
+  if(!channels.length){el.innerHTML=`<div class="notice">还没有渠道。点右上角「＋ 新增渠道」，填 Base URL 与 API Key。</div>`;return;}
+  el.innerHTML=channels.map(c=>`
+    <div class="channel">
+      <div class="channel-ico">${esc((c.name||'?').slice(0,1).toUpperCase())}</div>
+      <div class="channel-main">
+        <div class="channel-top">
+          <span class="channel-name">${esc(c.name)}</span>
+          ${c.enabled?`<span class="pill green">启用</span>`:`<span class="pill gray">停用</span>`}
+          <span class="pill gray">${c.models.length} 个模型</span>
+          <span class="small muted">同步：${esc(c.syncedAt||'—')}</span>
+        </div>
+        <div class="channel-url mono">${esc(c.base)}</div>
+        <div class="chips">${c.models.length?c.models.map(m=>`<span class="chip-model">${esc(m.id)} · ${m.kind==='video'?'视频':'图片'}</span>`).join(''):'<span class="small muted">尚未同步模型</span>'}</div>
+      </div>
+      <div class="channel-actions">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="syncChannel('${c.id}')">同步模型</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleChannel('${c.id}')">${c.enabled?'停用':'启用'}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="deleteChannel('${c.id}')">删除</button>
+      </div>
+    </div>`).join('');
+}
+
+function toggleChannel(id){
+  const c=channels.find(x=>x.id===id);if(!c)return;
+  c.enabled=!c.enabled;
+  if(!channels.some(x=>x.enabled)){c.enabled=true;toast('至少保留一个启用渠道');return;}
+  saveChannels();renderChannels();renderStudio();toast(`已${c.enabled?'启用':'停用'}「${c.name}」`);
+}
+function deleteChannel(id){
+  const c=channels.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`删除渠道「${c.name}」？`))return;
+  channels=channels.filter(x=>x.id!==id);
+  if(studioChannelId===id)studioChannelId=null;
+  saveChannels();renderChannels();renderStudio();toast('渠道已删除');
+}
+function syncChannel(id){
+  const c=channels.find(x=>x.id===id);if(!c)return;
+  if(!c.base){toast('请先配置 Base URL');return;}
+  toast('正在从渠道拉取模型…');
+  setTimeout(()=>{
+    c.models=mockModels(c.base);c.syncedAt='刚刚';
+    saveChannels();renderChannels();renderStudio();
+    toast(`已同步 ${c.models.length} 个模型`);
+  },700);
+}
+function mockModels(base){
+  const b=(base||'').toLowerCase();
+  if(b.includes('ark')||b.includes('volces'))return[
+    {id:'doubao-seedream-5-0-flash-260915',kind:'image'},
+    {id:'doubao-seedream-5-0-pro-260628',kind:'image'},
+    {id:'doubao-seedance-2-0-260128',kind:'video'}];
+  if(b.includes('omyai'))return[
+    {id:'gpt-image-2',kind:'image'},
+    {id:'gpt-image-2.5-flare',kind:'image'},
+    {id:'gpt-image-2.5-sunburst',kind:'image'}];
+  return[{id:'image-model-v1',kind:'image'},{id:'video-model-v1',kind:'video'}];
+}
+function openChannelModal(){
+  pendingModels=[];
+  $('cm-name').value='';$('cm-base').value='';$('cm-key').value='';$('cm-type').value='openai';
+  $('cm-test-result').textContent='填写后点「测试并拉取模型」。';
+  openModal('channel-modal');
+}
+function testChannel(){
+  const base=$('cm-base').value.trim(),key=$('cm-key').value.trim();
+  if(!base||!key){toast('Base URL 与 API Key 必填');return;}
+  pendingModels=mockModels(base);
+  $('cm-test-result').innerHTML=`连接成功，拉取到 <b>${pendingModels.length}</b> 个模型：<div class="chips">`+
+    pendingModels.map(m=>`<span class="chip-model">${esc(m.id)} · ${m.kind==='video'?'视频':'图片'}</span>`).join('')+`</div>`;
+  toast('连接成功');
+}
+function saveChannel(){
+  const name=$('cm-name').value.trim(),base=$('cm-base').value.trim(),key=$('cm-key').value.trim();
+  if(!name||!base||!key){toast('渠道名称、Base URL、API Key 必填');return;}
+  if(!/^https?:\/\//i.test(base)){toast('Base URL 需以 http(s):// 开头');return;}
+  const models=pendingModels.length?pendingModels:mockModels(base);
+  channels.push({id:'ch_'+Date.now(),name,type:$('cm-type').value,base,key:key.slice(0,3)+'••••••••',enabled:true,syncedAt:'刚刚',models});
+  saveChannels();closeModal('channel-modal');renderChannels();renderStudio();
+  toast(`渠道「${name}」已保存，同步到 ${models.length} 个模型`);
+}
+
+/* 制作台：每次生成前选择渠道 + 模型 */
+function genControls(kind){
+  const ch=studioChannel();
+  const list=ch?ch.models.filter(m=>m.kind===kind):[];
+  const opts=channels.filter(c=>c.enabled).map(c=>`<option value="${c.id}" ${ch&&c.id===ch.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  return `<div class="row cols-2">
+    <div class="field"><label>渠道</label><select class="select" onchange="pickStudioChannel(this.value)">${opts||'<option>无可用渠道</option>'}</select></div>
+    <div class="field"><label>模型</label><select class="select" id="gen-model">${list.length?list.map(m=>`<option>${esc(m.id)}</option>`).join(''):'<option>该渠道暂无此类模型</option>'}</select></div>
+  </div>`;
+}
+function pickStudioChannel(id){studioChannelId=id;renderStudio();}
+function currentModel(){const el=$('gen-model');return el?el.value:'—';}
+
 /* ============ 刷新与初始化 ============ */
 function refreshAll(){
   renderKPIs();renderOverviewProducts();renderProductList();renderProductDetail();
-  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();
+  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderChannels();
 }
 document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
 $('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k}">${t.name}</option>`).join('');
+studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
 </script>
 </body>
