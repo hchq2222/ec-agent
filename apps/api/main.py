@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -27,7 +28,7 @@ from apps.core.config import get_settings
 from apps.core.db import Database
 from apps.core.imageinfo import image_size
 from apps.core.models import Asset, Job, ProviderCall, utcnow
-from apps.core.storage import LocalStorage
+from apps.core.storage import build_object_key, build_storage
 from apps.providers.base import ErrorCode, ImageRequest, ProviderError
 from apps.providers.registry import Registry
 
@@ -53,7 +54,7 @@ _STATUS_BY_CODE = {
 }
 
 registry: Registry | None = None
-storage: LocalStorage | None = None
+storage: Any | None = None
 db: Database | None = None
 
 
@@ -63,8 +64,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logging.basicConfig(level=settings.log_level)
     registry = Registry.from_file(settings.providers_config)
-    storage = LocalStorage(settings.output_dir)
-    settings.output_dir.mkdir(parents=True, exist_ok=True)
+    storage = build_storage(settings)
 
     if settings.database_url:
         db = Database(settings.database_url)
@@ -106,6 +106,7 @@ async def healthz() -> dict[str, Any]:
         "ok": True,
         "models": len(registry.list_models()),
         "database": db is not None,
+        "storage": storage.backend if storage else None,
     }
 
 
@@ -151,7 +152,7 @@ async def get_job(job_id: str) -> JobDetailResponse:
             finished_at=row.finished_at,
             images=[
                 GeneratedImageOut(
-                    url=storage.public_url(settings.public_base_url, a.object_key),  # type: ignore[union-attr]
+                    url=storage.url_for(a.object_key),  # type: ignore[union-attr]
                     mime=a.mime,
                     bytes=a.bytes,
                     width=a.width,
@@ -219,15 +220,18 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
             await _mark_failed(job_id, spec, exc)
         raise
 
-    # 2) 落盘 + 记录产物
+    # 2) 写对象存储 + 记录产物
     images: list[GeneratedImageOut] = []
     stored_rows: list[Asset] = []
     for idx, img in enumerate(result.images):
         ext = img.mime.split("/")[-1].replace("jpeg", "jpg")
-        stored = storage.save(img.data, ext=ext, prefix=f"{job_id}_{idx}")
+        asset_id = uuid.uuid4()
+        key = build_object_key(asset_id=str(asset_id), ext=ext)
+        stored = await asyncio.to_thread(storage.put, key, img.data, img.mime)
         width, height = image_size(img.data)
         stored_rows.append(
             Asset(
+                id=asset_id,
                 tenant_id="default",
                 job_id=job_id,
                 idx=idx,
@@ -241,7 +245,7 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
         )
         images.append(
             GeneratedImageOut(
-                url=storage.public_url(settings.public_base_url, stored.key),
+                url=storage.url_for(stored.key),
                 mime=img.mime,
                 bytes=stored.bytes,
                 width=width,

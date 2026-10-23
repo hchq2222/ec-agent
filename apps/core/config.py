@@ -22,7 +22,17 @@ class Settings(BaseSettings):
     # 例：postgresql+asyncpg://app_user:***@203.0.113.10:5432/ec_agent_pro
     database_url: str = ""
 
-    # 产物落盘目录（MVP 用本地盘，后续换 MinIO 只替换 storage 实现）
+    # 产物存储：local（本地盘）| minio（S3 协议，TD-001 的二进制真源）
+    storage_backend: str = "local"
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket_assets: str = "assets"
+    minio_region: str = "us-east-1"
+    minio_ca_bundle: str = ""
+    minio_presign_ttl: int = 900
+
+    # 产物落盘目录（local 后端用；后续换 MinIO 只替换 storage 实现）
     output_dir: Path = Path("var/outputs")
     # 对外访问前缀，用于拼接返回给前端的 URL
     public_base_url: str = "http://127.0.0.1:8000"

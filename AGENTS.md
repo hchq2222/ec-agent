@@ -42,6 +42,7 @@ python -m venv .venv && .venv\Scripts\pip install -r requirements.txt   # Window
 .venv\Scripts\python -m alembic upgrade head                            # 建表（需要 DATABASE_URL）
 .venv\Scripts\python -m uvicorn apps.api.main:app --reload --port 8000
 .venv\Scripts\python scripts\smoke_image.py --list
+.venv\Scripts\python scripts\backfill_to_minio.py --apply   # 历史本地产物回填 MinIO
 ```
 
 密钥放 `.env`（见 `.env.example`），接口契约与扩展方式见 TD-002。

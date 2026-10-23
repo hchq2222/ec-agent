@@ -99,6 +99,8 @@
 - ✅ **迁移已应用**：测试库 `ec_agent_pro` 的 `app` schema 下现有 `job`、`asset`、`provider_call`、`alembic_version` 四张表（`version_num=0001_init`）。
 - ✅ **真实出图落库验证**：`gpt-image-2`、quality=low、1024×1024，耗时 38.6s；`job` / `asset` / `provider_call` 各 1 行，`GET /api/jobs/{id}` 可回查，产物 748 KB。
 - ✅ **失败也记录**：渠道异常时写 `job.failed` + `provider_call(failed, units=0)`；写库失败不影响已生成产物（响应 `persisted=false`）。
+- ✅ **MinIO 存储**：`STORAGE_BACKEND=minio`，新图直接写 `assets` 桶，key 为 `{tenant}/{yyyy}/{mm}/{asset_id}/generated.png`，返回 900s 预签名 URL；本地盘只在无 MinIO 时兜底。
+- ✅ **历史产物回填**：`scripts/backfill_to_minio.py --apply` 把本地 1 张历史图补传 MinIO 并更新 `asset.object_key`；回填图与新生成的图均可通过预签名 URL 下载（200，PNG 头正确）。
 - ⚠️ **计费口径**：omyai 的 `usage` 是 token 口径（本次 output image_tokens=272），`price` 未回填，`amount` 暂为空，待对账后填 `price_book`。
 - ⬜ **未做**：token→金额换算、前端接真实接口、图层拆分验证。
 
