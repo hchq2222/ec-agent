@@ -241,6 +241,15 @@ button.scene:hover{border-color:var(--brand)}
 .notice.blue{border-color:var(--blue);background:var(--blue-soft);color:#1e40af}
 .flex{display:flex;align-items:center;gap:10px}
 .two-col{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.settings{display:grid;grid-template-columns:190px 1fr;gap:16px;align-items:start}
+.settings-nav{display:flex;flex-direction:column;gap:3px;position:sticky;top:0}
+.settings-tab{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;color:var(--muted);font-weight:600;font-size:13px;text-align:left;border:0;background:transparent}
+.settings-tab:hover{background:var(--line-2)}
+.settings-tab.active{background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+.settings-tab .ico{width:18px;text-align:center;flex:none}
+.settings-body{min-width:0}
+.settings-body .card-b{overflow-x:auto}
+@media(max-width:1000px){.settings{grid-template-columns:1fr}.settings-nav{flex-direction:row;overflow-x:auto;position:static;padding-bottom:2px}.settings-tab{white-space:nowrap;background:var(--line-2)}.settings-tab.active{background:#fff}}
 .stat{display:flex;gap:6px;align-items:baseline}
 .stat b{font-size:20px;font-weight:800}
 .stat span{font-size:11px;color:var(--muted)}
@@ -739,48 +748,13 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 
       <!-- ============ PAGE: SETTINGS ============ -->
       <section class="page" id="page-settings">
-        <div class="page-head"><div><h1>设置</h1><p>品牌基础与模型配置。MVP 单租户、单角色，不做权限矩阵。</p></div></div>
-        <div class="two-col">
-          <div class="card">
-            <div class="card-h"><h3>品牌基础</h3><span class="sub">Logo / 主色 / 字体</span></div>
-            <div class="card-b">
-              <div class="field"><label>品牌 Logo</label>
-                <div class="flex"><span class="brand-mark" style="width:46px;height:46px;font-size:22px">森</span><button class="btn btn-ghost btn-sm">上传替换</button></div>
-              </div>
-              <div class="row cols-3">
-                <div class="field"><label>品牌主色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#355845;border:1px solid var(--line)"></span><span class="mono small">#355845</span></div></div>
-                <div class="field"><label>辅助色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#f5f3e9;border:1px solid var(--line)"></span><span class="mono small">#F5F3E9</span></div></div>
-                <div class="field"><label>标题字体</label><input class="input" value="思源黑体 / Source Han Sans"></div>
-              </div>
-              <div class="field"><label>禁用词（发布前拦截）</label>
-                <div class="flex" style="flex-wrap:wrap"><span class="pill red">最顶级</span><span class="pill red">第一</span><span class="pill red">国家级</span><span class="pill red">治疗</span><span class="pill gray">＋ 添加</span></div>
-              </div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-h">
-              <h3>渠道与模型</h3>
-              <button type="button" class="btn btn-primary btn-sm" onclick="openChannelModal()">＋ 新增渠道</button>
-            </div>
-            <div class="card-b">
-              <p class="small muted" style="margin-bottom:4px">每次生成时按渠道实时拉取模型列表，新增模型不用改代码。API Key 由服务端加密保存。</p>
-              <div id="channel-list"></div>
-              <hr class="hr">
-              <div class="field"><label>一致性校验（L3 五项，MVP 只自动做 2 项）</label>
-                <table class="table">
-                  <thead><tr><th>检测项</th><th>方法</th><th>打回阈值</th><th>MVP</th></tr></thead>
-                  <tbody>
-                    <tr><td>整体相似度</td><td>CLIP / DINOv2 余弦</td><td>&lt; 0.92</td><td><span class="pill green">自动</span></td></tr>
-                    <tr><td>Logo / 包装文字</td><td>OCR 字符比对</td><td>任一字符不一致</td><td><span class="pill green">自动</span></td></tr>
-                    <tr><td>主色偏移</td><td>商品区域 ΔE</td><td>ΔE &gt; 5</td><td><span class="pill gray">人工复核</span></td></tr>
-                    <tr><td>轮廓形变</td><td>分割 mask IoU</td><td>IoU &lt; 0.9</td><td><span class="pill gray">人工复核</span></td></tr>
-                    <tr><td>结构异常</td><td>多模态判新增元素</td><td>判定为是</td><td><span class="pill gray">人工复核</span></td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="notice blue">阈值取自方案文档 §6.3 的建议值，需在 P0 技术验证中用真实 SKU 校准。人工复核项 V1 再自动化。</div>
-            </div>
-          </div>
+        <div class="page-head">
+          <div><h1>设置</h1><p>账号与权限、账单与额度、日志、模型中心、品牌与安全。MVP 单管理员；多用户与权限矩阵 V1 开放。</p></div>
+          <span class="pill green">系统正常</span>
+        </div>
+        <div class="settings">
+          <nav class="settings-nav" id="settings-nav" aria-label="设置分区"></nav>
+          <div class="settings-body" id="settings-body"></div>
         </div>
       </section>
 
@@ -1210,6 +1184,7 @@ function go(page){
   document.querySelector('.content').scrollTop=0;
   if(page==='genstudio')gsOnOpen();
   if(page==='studio'||page==='canvas')gsLoadRecent();
+  if(page==='settings')renderSettings();
 }
 
 /* ============ 总览：主流程 ============ */
@@ -2360,14 +2335,14 @@ function toggleChannel(id){
   const c=channels.find(x=>x.id===id);if(!c)return;
   c.enabled=!c.enabled;
   if(!channels.some(x=>x.enabled)){c.enabled=true;toast('至少保留一个启用渠道');return;}
-  saveChannels();renderChannels();renderStudio();toast(`已${c.enabled?'启用':'停用'}「${c.name}」`);
+  saveChannels();renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();toast(`已${c.enabled?'启用':'停用'}「${c.name}」`);
 }
 function deleteChannel(id){
   const c=channels.find(x=>x.id===id);if(!c)return;
   if(!confirm(`删除渠道「${c.name}」？`))return;
   channels=channels.filter(x=>x.id!==id);
   if(studioChannelId===id)studioChannelId=null;
-  saveChannels();renderChannels();renderStudio();toast('渠道已删除');
+  saveChannels();renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();toast('渠道已删除');
 }
 function syncChannel(id){
   const c=channels.find(x=>x.id===id);if(!c)return;
@@ -2375,7 +2350,7 @@ function syncChannel(id){
   toast('正在从渠道拉取模型…');
   setTimeout(()=>{
     c.models=mockModels(c.base);c.syncedAt='刚刚';
-    saveChannels();renderChannels();renderStudio();
+    saveChannels();renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();
     toast(`已同步 ${c.models.length} 个模型`);
   },700);
 }
@@ -2391,6 +2366,234 @@ function mockModels(base){
     {id:'gpt-image-2.5-sunburst',kind:'image'}];
   return[{id:'image-model-v1',kind:'image'},{id:'video-model-v1',kind:'video'}];
 }
+
+/* ============ 设置：分区导航 ============ */
+const SETTINGS_TABS=[
+  {key:'account',icon:'👤',label:'用户与权限'},
+  {key:'billing',icon:'¥',label:'账单与额度'},
+  {key:'logs',icon:'≡',label:'日志与审计'},
+  {key:'models',icon:'◫',label:'模型中心'},
+  {key:'brand',icon:'◈',label:'品牌与合规'},
+  {key:'security',icon:'🛡',label:'安全说明'},
+];
+let settingsTab='account';
+const permCell=on=>`<td><input type="checkbox" ${on?'checked':''} disabled aria-label="${on?'允许':'不允许'}"></td>`;
+
+const SETTINGS_VIEWS={
+  account:()=>`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>当前账号</h3><span class="pill green">已登录</span></div>
+    <div class="card-b">
+      <div class="flex" style="gap:14px;align-items:center;flex-wrap:wrap">
+        <span class="brand-mark" style="width:52px;height:52px;font-size:24px">森</span>
+        <div style="flex:1;min-width:180px">
+          <div class="flex" style="flex-wrap:wrap"><b>运营小林</b><span class="pill brand">管理员</span><span class="pill gray">单管理员模式</span></div>
+          <div class="small muted">admin · 上次登录 10-25 09:12 · IP 127.0.0.1</div>
+          <div class="small muted">会话：Cookie · HttpOnly · SameSite=Lax · 2h 无操作失效</div>
+        </div>
+        <div class="flex">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：修改密码弹窗')">修改密码</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="revokeSessions()">退出登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>用户</h3><button type="button" class="btn btn-primary btn-sm" disabled title="V1 开放">＋ 新增用户</button></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>账号</th><th>姓名</th><th>角色</th><th>状态</th><th>上次登录</th></tr></thead><tbody>
+        <tr><td class="mono">admin</td><td>运营小林</td><td><span class="pill brand">管理员</span></td><td><span class="pill green">启用</span></td><td class="small muted">10-25 09:12</td></tr>
+      </tbody></table>
+      <p class="small muted" style="margin-top:8px">MVP 单管理员；user / role / permission 表已预留，V1 开放多用户与角色 UI。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>角色与权限</h3><span class="pill gray">只读预览</span></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>权限</th><th>管理员</th><th>运营（预留）</th></tr></thead><tbody>
+        ${[['商品档案',true,true],['素材生成',true,true],['导出交付',true,true],['渠道与密钥',true,false],['账单与额度',true,false],['日志导出',true,false],['用户管理',true,false]]
+          .map(([name,a,o])=>`<tr><td>${name}</td>${permCell(a)}${permCell(o)}</tr>`).join('')}
+      </tbody></table>
+      <div class="notice">单管理员模式下无权限冲突；V1 可按角色勾选，所有变更写 audit_log。</div>
+    </div>
+  </div>`,
+  billing:()=>{
+    const rows=jobs.flatMap(j=>j.items);
+    const act=+rows.reduce((n,i)=>n+(i.act||0),0).toFixed(2);
+    const est=+rows.reduce((n,i)=>n+(i.est||0),0).toFixed(2);
+    const used=act||est;
+    return `<div class="three-col" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+      <div class="card"><div class="card-b"><div class="small muted">本月已用（实际）</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">${yuan(used)}</div><div class="small muted">估算 ${yuan(est)} · 额度 ¥2,000</div></div></div>
+      <div class="card"><div class="card-b"><div class="small muted">账户余额</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">¥1,286.4</div><div class="small muted">MVP 不做在线充值</div></div></div>
+      <div class="card"><div class="card-b"><div class="small muted">待定价流水</div><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">3 条</div><div class="small muted">amount IS NULL</div></div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>额度与预算</h3><span class="pill green">未超限</span></div>
+      <div class="card-b">
+        <div class="row cols-3">
+          <div class="field"><label>单 SKU 硬上限</label><input class="input" value="¥18"></div>
+          <div class="field"><label>图片预算</label><input class="input" value="¥5"></div>
+          <div class="field"><label>视频预算</label><input class="input" value="¥10"></div>
+        </div>
+        <div class="row cols-2">
+          <div class="field"><label>返工预算</label><input class="input" value="¥3"></div>
+          <div class="field"><label>超限策略</label><select class="select"><option>暂停转人工</option><option>自动降档</option><option>直接失败</option></select></div>
+        </div>
+        <div class="field"><label>月度额度</label><input class="input" value="¥2,000"></div>
+        <p class="small muted">预算切分只做提示；实际以 provider_call 流水为准，超硬上限转人工。</p>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>单价表 price_book</h3><button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：新增单价')">＋ 新增单价</button></div>
+      <div class="card-b">
+        <table class="table"><thead><tr><th>渠道</th><th>模型</th><th>单位</th><th>单价</th><th>生效</th></tr></thead><tbody>
+          ${[['omyai','gpt-image-2','张','¥0.52','2026-10-20'],['omyai','gpt-image-2.5-flare','张','¥0.60','2026-10-20'],['火山方舟','Seedance 2.0','秒','¥0.08','未启用']]
+            .map(r=>`<tr><td>${r[0]}</td><td class="mono small">${r[1]}</td><td>${r[2]}</td><td class="mono">${r[3]}</td><td class="small muted">${r[4]}</td></tr>`).join('')}
+        </tbody></table>
+        <p class="small muted">omyai 实际按 token 计费；单价待账单回填，未定价调用单独列出。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>待定价流水</h3><span class="pill amber">3 条</span></div>
+      <div class="card-b">
+        <table class="table"><thead><tr><th>时间</th><th>渠道</th><th>模型</th><th>用量</th><th></th></tr></thead><tbody>
+          ${[['10-25 09:18','omyai','gpt-image-2','output 272 tokens'],['10-25 10:02','omyai','gpt-image-2','output 268 tokens'],['10-25 11:40','omyai','gpt-image-2.5-flare','output 284 tokens']]
+            .map(r=>`<tr><td class="small muted mono">${r[0]}</td><td>${r[1]}</td><td class="mono small">${r[2]}</td><td class="small">${r[3]}</td><td><button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：补单价并回填')">补单价</button></td></tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>`;
+  },
+  logs:()=>`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>操作日志</h3><div class="flex"><span class="pill gray">${audit.length} 条</span><button type="button" class="btn btn-ghost btn-sm" onclick="exportAudit()">导出 CSV</button></div></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>时间</th><th>操作人</th><th>对象</th><th>操作</th><th>原值 → 新值</th><th>IP</th></tr></thead><tbody>
+        ${audit.slice().reverse().map(a=>`<tr><td class="small muted mono">${a.at}</td><td>${esc(a.who)}</td><td>${esc(a.obj)}</td><td>${esc(a.op)}</td><td class="small">${esc(a.from)} → <b>${esc(a.to)}</b></td><td class="mono small">127.0.0.1</td></tr>`).join('')}
+      </tbody></table>
+      <p class="small muted" style="margin-top:8px">只 INSERT，不可修改；导出含操作人 / IP / trace_id。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>登录日志</h3><span class="sub">最近 3 次</span></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>时间</th><th>账号</th><th>IP</th><th>结果</th></tr></thead><tbody>
+        <tr><td class="small muted mono">10-25 09:12</td><td class="mono">admin</td><td class="mono small">127.0.0.1</td><td><span class="pill green">成功</span></td></tr>
+        <tr><td class="small muted mono">10-24 18:40</td><td class="mono">admin</td><td class="mono small">127.0.0.1</td><td><span class="pill green">成功</span></td></tr>
+        <tr><td class="small muted mono">10-24 18:36</td><td class="mono">admin</td><td class="mono small">127.0.0.1</td><td><span class="pill red">密码错误</span></td></tr>
+      </tbody></table>
+    </div>
+  </div>`,
+  models:()=>`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>渠道</h3><div class="flex"><button type="button" class="btn btn-ghost btn-sm" onclick="syncAllChannels()">同步全部</button><button type="button" class="btn btn-primary btn-sm" onclick="openChannelModal()">＋ 新增渠道</button></div></div>
+    <div class="card-b"><div id="channel-list"></div></div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>模型清单</h3><span class="pill gray">${channels.reduce((n,c)=>n+c.models.length,0)} 个</span></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>渠道</th><th>模型</th><th>类型</th><th>状态</th><th>单价</th></tr></thead><tbody>
+        ${channels.flatMap(c=>c.models.map(m=>`<tr><td>${esc(c.name)}</td><td class="mono small">${esc(m.id)}</td><td>${m.kind==='video'?'视频':'图片'}</td><td><span class="pill ${c.enabled?'green':'gray'}">${c.enabled?'启用':'停用'}</span></td><td class="mono small">${m.kind==='video'?'按秒待定':'按张待定'}</td></tr>`)).join('')||'<tr><td colspan="5" class="muted">暂无模型，先新增渠道并同步</td></tr>'}
+      </tbody></table>
+      <p class="small muted">模型由渠道实时同步；新增模型只改渠道配置，不改代码。API Key 由服务端加密保存。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>一致性校验（L3 五项）</h3><span class="pill brand">MVP 自动 2 项</span></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>检测项</th><th>方法</th><th>打回阈值</th><th>MVP</th></tr></thead><tbody>
+        <tr><td>整体相似度</td><td>CLIP / DINOv2 余弦</td><td>&lt; 0.92</td><td><span class="pill green">自动</span></td></tr>
+        <tr><td>Logo / 包装文字</td><td>OCR 字符比对</td><td>任一字符不一致</td><td><span class="pill green">自动</span></td></tr>
+        <tr><td>主色偏移</td><td>商品区域 ΔE</td><td>ΔE &gt; 5</td><td><span class="pill gray">人工复核</span></td></tr>
+        <tr><td>轮廓形变</td><td>分割 mask IoU</td><td>IoU &lt; 0.9</td><td><span class="pill gray">人工复核</span></td></tr>
+        <tr><td>结构异常</td><td>多模态判新增元素</td><td>判定为是</td><td><span class="pill gray">人工复核</span></td></tr>
+      </tbody></table>
+      <div class="notice blue">阈值取自方案文档 §6.3 的建议值，需在 P0 技术验证中用真实 SKU 校准。</div>
+    </div>
+  </div>`,
+  brand:()=>`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>品牌基础</h3><span class="sub">Logo / 主色 / 字体</span></div>
+    <div class="card-b">
+      <div class="field"><label>品牌 Logo</label>
+        <div class="flex"><span class="brand-mark" style="width:46px;height:46px;font-size:22px">森</span><button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：上传替换 Logo')">上传替换</button></div>
+      </div>
+      <div class="row cols-3">
+        <div class="field"><label>品牌主色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#355845;border:1px solid var(--line)"></span><span class="mono small">#355845</span></div></div>
+        <div class="field"><label>辅助色</label><div class="flex"><span style="width:30px;height:30px;border-radius:8px;background:#f5f3e9;border:1px solid var(--line)"></span><span class="mono small">#F5F3E9</span></div></div>
+        <div class="field"><label>标题字体</label><input class="input" value="思源黑体 / Source Han Sans"></div>
+      </div>
+      <div class="field"><label>禁用词（发布前拦截）</label>
+        <div class="flex" style="flex-wrap:wrap"><span class="pill red">最顶级</span><span class="pill red">第一</span><span class="pill red">国家级</span><span class="pill red">治疗</span><span class="pill gray">＋ 添加</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>合规标识默认</h3><span class="pill green">导出时合成</span></div>
+    <div class="card-b">
+      <ul class="checklist">
+        <li><input type="checkbox" checked><label>显式 AI 生成角标（右下角）</label></li>
+        <li><input type="checkbox" checked><label>隐式水印（不影响观感）</label></li>
+        <li><input type="checkbox" checked><label>元数据留痕（参数 / 任务 / 操作人）</label></li>
+      </ul>
+      <p class="small muted">库内 asset_version 保留无标识母版；导出时按渠道要求合成，换渠道可重新合成，不重新生成。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>导出命名与目录</h3></div>
+    <div class="card-b">
+      <div class="field"><label>文件名模板</label><input class="input mono" value="{product_id}_{sku}_{usage}_{seq}"></div>
+      <div class="field"><label>目录规则</label><select class="select"><option>按渠道分目录（taobao / douyin / amazon）</option><option>按 SKU 分目录</option></select></div>
+      <div class="notice">导出清单只包含制作单完成的 SKU；缺项不会被“补图”，自由选择下不存在预设缺位。</div>
+    </div>
+  </div>`,
+  security:()=>`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>安全基线与实现状态</h3><span class="pill brand">MVP 基线</span></div>
+    <div class="card-b">
+      <table class="table"><thead><tr><th>项</th><th>做法</th><th>状态</th></tr></thead><tbody>
+        ${[['登录与会话','单 admin + 密码；Cookie HttpOnly / SameSite=Lax；2h 无操作失效','已定'],['密码存储','Argon2id；连续失败 5 次锁定 15 分钟','待实现'],['API Key','Fernet 加密；接口只回显后 4 位','已实现'],['审计日志','只 INSERT；含 actor / IP / trace_id；不可修改','表已设计'],['软删','30 天回收站；原图永不物理删','已定'],['传输','MinIO TLS；PG / Redis 测试环境内网明文','已就绪'],['备份','PG 每日全量 + WAL；MinIO 版本化','待上线'],['数据保留','审计 180 天；回收站 30 天；原图永久','已定']]
+          .map(([a,b,c])=>`<tr><td>${a}</td><td class="small">${b}</td><td><span class="pill ${['已实现','已就绪','已定','表已设计'].includes(c)?'green':'gray'}">${c}</span></td></tr>`).join('')}
+      </tbody></table>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>安全操作</h3></div>
+    <div class="card-b"><div class="flex" style="flex-wrap:wrap">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：修改密码')">修改密码</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="revokeSessions()">撤销所有会话</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="exportAudit()">下载审计日志</button>
+    </div></div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>安全提醒</h3></div>
+    <div class="card-b">
+      <div class="notice red">不要把 API Key 复制到仓库、聊天工具或前端代码；真实值只在本地 <span class="mono">infrastructure/credentials.local.md</span>。</div>
+      <div class="notice blue">导出包默认合成合规标识，库内母版无标识；换渠道可重新合成，不重新生成。</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-h"><h3>系统信息</h3><span class="pill gray">只读</span></div>
+    <div class="card-b">
+      <table class="table"><tbody>
+        <tr><td style="width:120px">版本</td><td class="mono">v0.1 · 原型</td></tr>
+        <tr><td>环境</td><td>测试环境 · 单租户</td></tr>
+        <tr><td>中间件</td><td>PostgreSQL 17 / Redis 7.4 / MinIO</td></tr>
+        <tr><td>时区</td><td>Asia/Shanghai (UTC+8)</td></tr>
+        <tr><td>API</td><td class="mono">http://127.0.0.1:8000</td></tr>
+      </tbody></table>
+    </div>
+  </div>`,
+};
+
+function renderSettings(){
+  const nav=$('settings-nav'), body=$('settings-body');if(!nav||!body)return;
+  nav.innerHTML=SETTINGS_TABS.map(t=>`<button type="button" class="settings-tab ${settingsTab===t.key?'active':''}" onclick="setSettingsTab('${t.key}')" ${settingsTab===t.key?'aria-current="page"':''}><span class="ico">${t.icon}</span><span>${t.label}</span></button>`).join('');
+  body.innerHTML=(SETTINGS_VIEWS[settingsTab]||SETTINGS_VIEWS.account)();
+  if(settingsTab==='models')renderChannels();
+}
+function setSettingsTab(key){settingsTab=key;renderSettings();}
+function syncAllChannels(){
+  channels.forEach(c=>{if(c.enabled){c.models=mockModels(c.base);c.syncedAt='刚刚';}});
+  saveChannels();renderStudio();renderSettings();toast('已同步全部启用渠道');
+}
+function revokeSessions(){toast('原型：已撤销所有会话，需要重新登录');}
+function exportAudit(){toast('原型：导出 CSV（含操作人 / IP / trace_id）');}
+
 function openChannelModal(){
   pendingModels=[];
   $('cm-name').value='';$('cm-base').value='';$('cm-key').value='';$('cm-type').value='openai';
@@ -2411,7 +2614,7 @@ function saveChannel(){
   if(!/^https?:\/\//i.test(base)){toast('Base URL 需以 http(s):// 开头');return;}
   const models=pendingModels.length?pendingModels:mockModels(base);
   channels.push({id:'ch_'+Date.now(),name,type:$('cm-type').value,base,key:key.slice(0,3)+'••••••••',enabled:true,syncedAt:'刚刚',models});
-  saveChannels();closeModal('channel-modal');renderChannels();renderStudio();
+  saveChannels();closeModal('channel-modal');renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();
   toast(`渠道「${name}」已保存，同步到 ${models.length} 个模型`);
 }
 
@@ -2719,7 +2922,7 @@ function gsBindDrop(){
 /* ============ 刷新与初始化 ============ */
 function refreshAll(){
   renderKPIs();renderOverviewProducts();renderProductList();renderProductDetail();
-  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderChannels();
+  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderSettings();renderChannels();
 }
 document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
 studioChannelId=(activeChannel()||{}).id||null;
@@ -2733,6 +2936,7 @@ if(__hash){
   if(__pg==='products'&&__arg==='new'){openProductModal();}
   else if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
   else if(__pg==='tasks'&&__arg==='batch'){openBatch();}
+  else if(__pg==='settings'&&__arg&&SETTINGS_TABS.some(t=>t.key===__arg)){settingsTab=__arg;renderSettings();}
 }
 </script>
 </body>
