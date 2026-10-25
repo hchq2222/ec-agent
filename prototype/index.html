@@ -150,6 +150,8 @@ a{color:inherit;text-decoration:none}
 .table td{padding:11px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle}
 .table tr:last-child td{border-bottom:0}
 .table tr:hover td{background:#fafbfc}
+.plan-table td{padding:7px 8px}
+.plan-table input[type=number]{width:76px}
 
 /* Forms */
 .field{margin-bottom:13px}
@@ -509,7 +511,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <!-- ============ PAGE: STUDIO ============ -->
       <section class="page" id="page-studio">
         <div class="page-head">
-          <div><h1>制作台</h1><p>抠图白底 → 场景图 → 主图 → 短视频。商品用真实像素合成，场景才走生成。</p></div>
+          <div><h1>制作台</h1><p>抠图白底 → 场景图 → 主图 → 短视频。交付清单自由勾选，不预设 8 位；商品用真实像素合成，场景才走生成。</p></div>
           <div class="flex">
             <label class="sr-only" for="studio-product">当前商品</label>
             <select class="select" id="studio-product"></select>
@@ -518,6 +520,21 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
               <button data-step="1">② 场景图</button>
               <button data-step="2">③ 主图</button>
               <button data-step="3">④ 短视频</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h3>制作单 · 自由选择</h3><span class="sub">不预设 8 位；每个 SKU 一个 Job；选中项全部 final 才能定稿</span><span class="pill gray" id="studio-plan-budget">—</span></div>
+          <div class="card-b">
+            <div id="studio-plan-editor"></div>
+            <p class="small muted" style="margin-top:6px">数量填 0 即不交付；按张/条计费，单个 SKU 超出 ¥18 硬上限会阻断提交。</p>
+            <div class="flex" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px">
+              <span class="small muted" id="studio-plan-summary"></span>
+              <span class="flex">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="resetStudioPlan()">恢复示例清单</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="saveStudioPlan()">保存制作单</button>
+                <button type="button" class="btn btn-primary btn-sm" id="studio-plan-submit" onclick="submitStudioPlan()">提交生成</button>
+              </span>
             </div>
           </div>
         </div>
@@ -689,7 +706,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <section class="page" id="page-assets">
         <div class="page-head">
           <div><h1>素材库 / 交付</h1><p>把候选稿变成可追溯的已确认素材，并按渠道分目录打包导出。</p></div>
-          <button class="btn btn-primary" onclick="toast('原型：将按下方清单打包 ZIP，目录按渠道划分')">⤓ 导出素材包（ZIP）</button>
+          <button class="btn btn-primary" onclick="doExport()">⤓ 导出素材包（ZIP）</button>
         </div>
         <div class="two-col">
           <div>
@@ -703,9 +720,20 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
             </div>
           </div>
           <div class="card">
-            <div class="card-h"><h3>导出清单</h3><span class="pill gray">按渠道分目录</span></div>
-            <div class="card-b" id="export-body"></div>
+            <div class="card-h"><h3>合规标识 · 导出时合成</h3><span class="pill green">母版无标识</span></div>
+            <div class="card-b">
+              <ul class="checklist">
+                <li><input type="checkbox" id="cp-label" data-cp="显式 AI 角标" checked onchange="renderExport()"><label for="cp-label">显式 AI 生成角标（右下角）</label></li>
+                <li><input type="checkbox" id="cp-watermark" data-cp="隐式水印" checked onchange="renderExport()"><label for="cp-watermark">隐式水印（不影响观感）</label></li>
+                <li><input type="checkbox" id="cp-meta" data-cp="元数据留痕" checked onchange="renderExport()"><label for="cp-meta">元数据留痕（参数 / 任务 / 操作人）</label></li>
+              </ul>
+              <p class="small muted" style="margin-top:8px">库内 asset_version 保留无标识母版；导出时按渠道要求合成，换渠道可重新合成，不重新生成。</p>
+            </div>
           </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-h"><h3>导出清单</h3><span class="pill gray">按渠道分目录</span></div>
+          <div class="card-b" id="export-body"></div>
         </div>
       </section>
 
@@ -912,14 +940,18 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
     <div class="modal-h"><h3 id="bm-title">新建批量任务</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('batch-modal')">✕</button></div>
     <div class="modal-b">
       <div class="field"><label>商品 / SKU 清单</label><ul class="checklist" id="bm-skus"></ul></div>
-      <div class="row cols-2">
-        <div class="field"><label for="bm-tpl">交付清单（示例）</label><select class="select" id="bm-tpl" onchange="renderBatchEstimate()"></select></div>
-        <div class="field"><label for="bm-ch">目标渠道</label><select class="select" id="bm-ch"><option>淘宝 + 抖音 + Amazon</option><option>仅淘宝</option></select></div>
+      <div class="field">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:5px">
+          <label style="margin:0">交付清单 · 每个 SKU 一份</label>
+          <span class="pill gray" id="batch-plan-budget">—</span>
+        </div>
+        <div id="batch-plan-editor"></div>
       </div>
+      <div class="field"><label for="bm-ch">目标渠道</label><select class="select" id="bm-ch"><option>淘宝 + 抖音 + Amazon</option><option>仅淘宝</option></select></div>
       <div class="notice red" id="bm-block" hidden></div>
       <hr class="hr">
       <div class="flex" style="justify-content:space-between" id="bm-estimate"></div>
-      <p class="small muted" style="margin-top:8px">正式版按「用途 + 数量」自由勾选，不预设 8 位；当前用示例清单估算。执行中的重试会计入实际费，任务中心分开显示。</p>
+      <p class="small muted" style="margin-top:8px">不预设 8 位；每个 SKU 一个 Job，批次用 parent_job_id 归组。执行中的重试会计入实际费。</p>
     </div>
     <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('batch-modal')">取消</button><button class="btn btn-primary" id="bm-submit" onclick="submitBatch()">确认提交</button></div>
   </div>
@@ -1024,33 +1056,74 @@ function pStatus(p){
 const canGenerate=p=>Object.entries(p.fields).every(([k,f])=>f.src==='human'||fieldScope(p,k)!=='generate');
 function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid);if(s)return{p,s,label:`${p.short} · ${s.color} ${s.spec}`};}return null;}
 
-/* 任务按「SKU × 产出」逐项记录状态与费用；失败 / 取消项不计实际费，重试成功才计 */
-const TEMPLATES={
-  full:{name:'全套 · 自选 8 项 + 15s 视频',outs:[['图片 8 项',4.2],['15s 视频',5.0]]},
-  img8:{name:'自选 8 项（示例：主图 3 + 场景 5）',outs:[['图片 8 项',4.2]]},
-  main3:{name:'仅主图 3 张',outs:[['主图 3 张',1.6]]},
-};
+/* 交付项：自由选择「用途 + 数量」；不预设 8 位。单价仅用于原型估算 */
+const DELIVERABLES=[
+  {key:'white',label:'白底图',unit:0.5,ext:'jpg'},
+  {key:'scene',label:'场景图',unit:0.6,ext:'jpg'},
+  {key:'main',label:'主图',unit:0.6,ext:'jpg'},
+  {key:'detail',label:'细节图',unit:0.5,ext:'jpg'},
+  {key:'video',label:'15s 视频',unit:5.0,ext:'mp4'},
+];
+const DELIV=Object.fromEntries(DELIVERABLES.map(d=>[d.key,d]));
+const BUDGET=18;
+const DEFAULT_COUNTS={white:1,scene:3,main:2,detail:2,video:1};
+const defaultPlan=()=>DELIVERABLES.map(d=>({key:d.key,count:DEFAULT_COUNTS[d.key]}));
+const PLAN=o=>DELIVERABLES.map(d=>({key:d.key,count:o[d.key]||0}));
+const FULL=()=>PLAN({white:1,scene:3,main:2,detail:2,video:1});
+const IMG8=()=>PLAN({white:1,scene:3,main:2,detail:2});
+let studioPlan=defaultPlan(), batchPlan=defaultPlan();
+const planCost=p=>+p.reduce((n,x)=>n+x.count*DELIV[x.key].unit,0).toFixed(2);
+const planCount=p=>p.reduce((n,x)=>n+x.count,0);
+function planItems(sku,plan){
+  return plan.filter(x=>x.count>0).map(x=>{
+    const d=DELIV[x.key], est=+(x.count*d.unit).toFixed(2);
+    return {sku,usage:x.key,out:`${d.label} ×${x.count}`,count:x.count,status:'等待',est,act:0};
+  });
+}
+function mockItems(sku,plan,opt={}){
+  return plan.filter(x=>x.count>0).map(x=>{
+    const d=DELIV[x.key], est=+(x.count*d.unit).toFixed(2);
+    const st=(opt.status&&opt.status[x.key])||'成功';
+    const act=st==='成功'?+(est*((opt.act&&opt.act[x.key])||1.05)).toFixed(2):0;
+    const it={sku,usage:x.key,out:`${d.label} ×${x.count}`,count:x.count,status:st,est,act};
+    if(opt.err&&opt.err[x.key])it.err=opt.err[x.key];
+    return it;
+  });
+}
+function jobPlanDone(j){
+  if(!j.plan)return j.items.length>0&&j.items.every(i=>i.status==='成功');
+  return j.plan.filter(p=>p.count>0).every(p=>{
+    const it=j.items.find(i=>i.usage===p.key);
+    return !!it&&it.count>=p.count&&it.status==='成功';
+  });
+}
+function skuPlanDone(sid){
+  return jobs.some(j=>j.items.some(i=>i.sku===sid)&&jobPlanDone(j));
+}
 const jobs=[
-  {id:'J-1021-01',name:'森序洁面乳 · 全套',created:'10-21 09:10',items:[
-    {sku:'s11',out:'图片 8 项',status:'成功',est:4.2,act:4.6},
-    {sku:'s11',out:'15s 视频',status:'成功',est:5.0,act:6.2},
-    {sku:'s12',out:'图片 8 项',status:'成功',est:4.2,act:4.4},
-    {sku:'s12',out:'15s 视频',status:'成功',est:5.0,act:5.4},
-    {sku:'s13',out:'图片 8 项',status:'执行中',est:4.2,act:0},
-    {sku:'s13',out:'15s 视频',status:'等待',est:5.0,act:0}]},
-  {id:'J-1021-02',name:'森序洁面乳 · 场景图重做（换植物背景）',created:'10-21 10:20',items:[
-    {sku:'s11',out:'场景图 2 张',status:'成功',est:1.0,act:1.0},
-    {sku:'s12',out:'场景图 2 张',status:'已取消',est:1.0,act:0}]},
-  {id:'J-1021-03',name:'云柔四件套 · 自选 8 项',created:'10-21 11:02',items:[
-    {sku:'s21',out:'图片 8 项',status:'成功',est:4.2,act:4.2},
-    {sku:'s22',out:'图片 8 项',status:'成功',est:4.2,act:4.3}]},
-  {id:'J-1021-04',name:'快充线 · 全套',created:'10-21 13:40',items:[
-    {sku:'s31',out:'图片 8 项',status:'失败',est:4.2,act:0,err:'一致性校验打回：接口孔位 OCR 比对不通过'},
-    {sku:'s31',out:'15s 视频',status:'等待',est:5.0,act:0}]},
+  {id:'J-1021-01-01',parent:'B-1021-01',name:skuInfo('s11').label+' · 全套',created:'10-21 09:10',plan:FULL(),
+   items:mockItems('s11',FULL(),{act:{white:1.12,scene:1.08,main:1.06,detail:1.0,video:1.24}})},
+  {id:'J-1021-01-02',parent:'B-1021-01',name:skuInfo('s12').label+' · 全套',created:'10-21 09:10',plan:FULL(),
+   items:mockItems('s12',FULL(),{act:{white:1.0,scene:1.03,main:1.04,detail:1.0,video:1.08}})},
+  {id:'J-1021-01-03',parent:'B-1021-01',name:skuInfo('s13').label+' · 全套',created:'10-21 09:10',plan:FULL(),
+   items:mockItems('s13',FULL(),{status:{white:'成功',scene:'执行中',main:'等待',detail:'等待',video:'等待'}})},
+  {id:'J-1021-02-01',parent:'B-1021-02',name:skuInfo('s11').label+' · 场景图重做',created:'10-21 10:20',plan:PLAN({scene:2}),
+   items:mockItems('s11',PLAN({scene:2}),{act:{scene:1.05}})},
+  {id:'J-1021-02-02',parent:'B-1021-02',name:skuInfo('s12').label+' · 场景图重做',created:'10-21 10:20',plan:PLAN({scene:2}),
+   items:mockItems('s12',PLAN({scene:2}),{status:{scene:'已取消'}})},
+  {id:'J-1021-03-01',parent:'B-1021-03',name:skuInfo('s21').label+' · 自选清单',created:'10-21 11:02',plan:IMG8(),
+   items:mockItems('s21',IMG8(),{act:{white:1.0,scene:1.02,main:1.0,detail:1.0}})},
+  {id:'J-1021-03-02',parent:'B-1021-03',name:skuInfo('s22').label+' · 自选清单',created:'10-21 11:02',plan:IMG8(),
+   items:mockItems('s22',IMG8(),{act:{white:1.02,scene:1.05,main:1.0,detail:1.0}})},
+  {id:'J-1021-04-01',parent:'B-1021-04',name:skuInfo('s31').label+' · 自选清单',created:'10-21 13:40',plan:PLAN({white:1,scene:2,main:2,detail:1,video:1}),
+   items:mockItems('s31',PLAN({white:1,scene:2,main:2,detail:1,video:1}),{
+     status:{white:'成功',scene:'失败',main:'等待',detail:'等待',video:'等待'},
+     act:{white:1.0},err:{scene:'一致性校验打回：接口孔位 OCR 比对不通过'}})},
 ];
 const ACTIVE=['执行中','等待'];
 function jobStatus(j){
   const s=j.items.map(i=>i.status);
+  if(s.every(x=>x==='等待'))return'等待';
   if(s.some(x=>ACTIVE.includes(x)))return s.includes('失败')?'部分失败':'执行中';
   if(s.includes('失败'))return s.includes('成功')?'部分失败':'失败';
   if(s.every(x=>x==='已取消'))return'已取消';
@@ -1154,9 +1227,9 @@ function skuCostRows(){
   jobs.forEach(j=>j.items.forEach(it=>{
     if(it.status==='已取消')return;
     const r=m[it.sku]||(m[it.sku]={est:0,act:0,outs:{}});
-    r.est+=it.est;r.act+=it.act;r.outs[it.out]=it.status;
+    r.est+=it.est;r.act+=it.act;if(r.outs[it.out]!=='成功')r.outs[it.out]=it.status;
   }));
-  return Object.entries(m).map(([sku,r])=>[sku,{...r,full:r.outs['图片 8 项']==='成功'&&r.outs['15s 视频']==='成功'}]);
+  return Object.entries(m).map(([sku,r])=>[sku,{...r,full:skuPlanDone(sku)}]);
 }
 function renderKPIs(){
   const full=skuCostRows().filter(([,r])=>r.full);
@@ -1167,7 +1240,7 @@ function renderKPIs(){
   /* scale：进度条满格对应的数值；dir：ge 越大越好 / le 越小越好 */
   const K=[
     {id:'H1',label:'一次通过率',val:h1,fmt:v=>v.toFixed(0)+'%',target:60,tfmt:'≥60%',dir:'ge',scale:100,note:`示例样本 ${FIRST_PASS.pass}/${FIRST_PASS.total} 张素材无需返修`},
-    {id:'H2',label:'单 SKU 全套成本',val:h2,fmt:v=>yuan(v),target:15,tfmt:'≤¥15',dir:'le',scale:20,note:full.length?`已完成全套 ${full.length} 个 SKU 均值 · 估算 ${yuan(h2e)} / 实际 ${yuan(h2)}`:'暂无完成全套的 SKU'},
+    {id:'H2',label:'单 SKU 交付成本',val:h2,fmt:v=>yuan(v),target:15,tfmt:'≤¥15',dir:'le',scale:20,note:full.length?`已完成制作单 ${full.length} 个 SKU 均值 · 估算 ${yuan(h2e)} / 实际 ${yuan(h2)}`:'暂无完成制作单的 SKU'},
     {id:'H3',label:'单 SKU 交付时长',val:h3,fmt:v=>v.toFixed(0)+' min',target:30,tfmt:'≤30 min',dir:'le',scale:40,note:`含人工确认 · 同 H2 口径 ${mins.length} 个 SKU 均值`},
     {id:'H4',label:'商家愿意上架比例',val:NaN,fmt:()=>'—',target:80,tfmt:'≥80%',dir:'ge',scale:100,note:'P5 真实跑批（20 SKU）时采集'},
   ];
@@ -1703,7 +1776,68 @@ function checkList(p,extra=[]){
     <input type="checkbox" id="ck-${studioStep}-${i}" style="margin-top:3px"><label for="ck-${studioStep}-${i}" style="margin:0;font-weight:400">${c}</label></li>`).join('')}</ul>`;
 }
 function submitGen(what){const ch=studioChannel();toast(`原型：用「${ch?ch.name:'未选渠道'} / ${currentModel()}」提交「${what}」，提交前会显示费用估算`);}
+/* ============ 制作单：自由选择交付清单 ============ */
+function planEditorHTML(plan,scope){
+  return `<table class="table plan-table"><thead><tr><th>交付项</th><th style="width:96px">数量</th><th style="width:88px">单价</th><th style="width:88px">小计</th></tr></thead><tbody>
+    ${DELIVERABLES.map(d=>{const p=plan.find(x=>x.key===d.key)||{count:0};return `<tr>
+      <td>${d.label}${d.key==='video'?' <span class="small muted">9:16</span>':''}</td>
+      <td><input class="input" type="number" min="0" max="20" value="${p.count}" oninput="setPlanCount('${scope}','${d.key}',this.value,this)" aria-label="${d.label}数量"></td>
+      <td class="mono small">${yuan(d.unit)}</td>
+      <td class="mono" id="plan-sub-${scope}-${d.key}">${yuan(p.count*d.unit)}</td>
+    </tr>`}).join('')}
+  </tbody></table>`;
+}
+function setPlanCount(scope,key,raw,el){
+  const plan=scope==='studio'?studioPlan:batchPlan;
+  const row=plan.find(x=>x.key===key);if(!row)return;
+  const n=parseInt(raw,10);
+  row.count=Math.max(0,Math.min(20,Number.isFinite(n)?n:0));
+  if(el&&raw!==''&&String(row.count)!==String(raw))el.value=row.count;
+  const sub=$(`plan-sub-${scope}-${key}`);if(sub)sub.textContent=yuan(row.count*DELIV[key].unit);
+  refreshPlanUI(scope);
+}
+function refreshPlanUI(scope){
+  const plan=scope==='studio'?studioPlan:batchPlan;
+  const total=planCost(plan), n=planCount(plan), over=total>BUDGET;
+  const sum=$(`${scope}-plan-summary`), bud=$(`${scope}-plan-budget`), btn=$(`${scope}-plan-submit`);
+  if(sum)sum.textContent=`已选 ${n} 项 · 估算 ${yuan(total)}`;
+  if(bud){bud.textContent=over?`超预算 ${yuan(total-BUDGET)}`:`预算 ¥${BUDGET} · 剩余 ${yuan(BUDGET-total)}`;bud.className=`pill ${over?'red':'green'}`;}
+  if(btn)btn.disabled=!n||over;
+  if(scope==='batch')renderBatchEstimate();
+}
+function resetStudioPlan(){
+  studioPlan=defaultPlan();
+  const ed=$('studio-plan-editor');if(ed)ed.innerHTML=planEditorHTML(studioPlan,'studio');
+  refreshPlanUI('studio');toast('已恢复示例清单，可自由增减');
+}
+function renderStudioPlan(){
+  const ed=$('studio-plan-editor');if(!ed)return;
+  ed.innerHTML=planEditorHTML(studioPlan,'studio');
+  refreshPlanUI('studio');
+}
+function saveStudioPlan(){
+  const p=pById(studioPid);
+  audit.push({obj:`${p.name} · 制作单`,op:'保存制作单',from:'—',to:`${planCount(studioPlan)} 项 / 估算 ${yuan(planCost(studioPlan))}`,who:OPERATOR,at:now()});
+  toast('制作单已保存（原型：不落库）');
+}
+function submitStudioPlan(){
+  const p=pById(studioPid);
+  if(!p.skus.length){toast('该商品还没有 SKU，请先在商品档案补充');return;}
+  if(!planCount(studioPlan)){toast('至少选择 1 个交付项');return;}
+  if(planCost(studioPlan)>BUDGET){toast(`单个 SKU 估算 ${yuan(planCost(studioPlan))}，超过 ¥${BUDGET} 硬上限`);return;}
+  const stamp=now().replace(/[- :]/g,'').slice(0,8);
+  const parent='B-'+stamp, base='J-'+stamp;
+  p.skus.forEach((s,i)=>{
+    jobs.unshift({id:`${base}-${String(i+1).padStart(2,'0')}`,parent,
+      name:`${p.short} · ${s.color} ${s.spec} · 制作单`,created:now(),
+      plan:studioPlan.map(x=>({...x})),items:planItems(s.id,studioPlan)});
+  });
+  refreshAll();
+  toast(`已提交 ${p.skus.length} 个 SKU，每个 SKU 一个 Job`);
+}
+
 function renderStudio(){
+  renderStudioPlan();
   $('studio-product').innerHTML=products.map(p=>`<option value="${p.id}" ${p.id===studioPid?'selected':''}>${esc(p.name)}</option>`).join('');
   const p=pById(studioPid), sub=CATS[p.cat].subject, ok=canGenerate(p), dis=ok?'':'disabled';
   const el=$('studio-body');
@@ -2025,19 +2159,21 @@ onSeg('canvas-mode',v=>{canvasMode=v;renderCanvas();});
 /* ============ 任务中心 ============ */
 const ST_CLS={'成功':'green','执行中':'blue','等待':'gray','失败':'red','部分失败':'amber','已取消':'gray'};
 function renderTasks(){
-  const st=jobs.map(jobStatus), running=st.filter(s=>s==='执行中').length, fail=st.filter(s=>s.includes('失败')).length;
-  $('task-summary').textContent=`共 ${jobs.length} 个 · ${running} 个执行中 · ${fail} 个含失败项`;
+  const st=jobs.map(jobStatus), running=st.filter(s=>s==='执行中').length, waiting=st.filter(s=>s==='等待').length, fail=st.filter(s=>s.includes('失败')).length;
+  const batches=new Set(jobs.map(j=>j.parent||j.id)).size;
+  $('task-summary').textContent=`共 ${jobs.length} 个 Job · ${batches} 个批次 · ${running} 个执行中 · ${waiting} 个等待 · ${fail} 个含失败项`;
   $('task-list').innerHTML=jobs.map((j,ji)=>{
-    const s=jobStatus(j), done=j.items.filter(i=>['成功','失败','已取消'].includes(i.status)).length;
+    const s=jobStatus(j), totalItems=j.items.reduce((n,i)=>n+(i.count||1),0);
+    const doneItems=j.items.filter(i=>['成功','失败','已取消'].includes(i.status)).reduce((n,i)=>n+(i.count||1),0);
     const est=sum(j.items.filter(i=>i.status!=='已取消'),'est'), act=sum(j.items,'act');
     const canCancel=j.items.some(i=>ACTIVE.includes(i.status));
     return `<div class="card" style="margin-bottom:10px;box-shadow:none"><div class="card-b" style="padding:12px 14px">
       <div class="flex" style="justify-content:space-between;margin-bottom:6px">
-        <span><b style="font-size:13px">${esc(j.name)}</b> <span class="small muted mono">${j.id} · ${j.created}</span></span>
+        <span><b style="font-size:13px">${esc(j.name)}</b> <span class="small muted mono">${j.id} · ${j.created}${j.parent?` · 批次 ${j.parent}`:''}</span></span>
         <span class="flex"><span class="pill ${ST_CLS[s]}">${s}</span>${canCancel?`<button type="button" class="btn btn-ghost btn-sm" onclick="cancelJob(${ji})">取消未完成项</button>`:''}</span>
       </div>
-      <div class="progress" role="progressbar" aria-valuenow="${done}" aria-valuemin="0" aria-valuemax="${j.items.length}" aria-label="已结束项"><i class="${s==='成功'?'green':s.includes('失败')?'amber':''}" style="width:${done/j.items.length*100}%"></i></div>
-      <div class="flex small muted" style="justify-content:space-between;margin-top:6px"><span>${done}/${j.items.length} 项已结束</span><span class="mono">估算 ${yuan(est)} · 实际 ${yuan(act)}</span></div>
+      <div class="progress" role="progressbar" aria-valuenow="${doneItems}" aria-valuemin="0" aria-valuemax="${totalItems}" aria-label="已结束项"><i class="${s==='成功'?'green':s.includes('失败')?'amber':''}" style="width:${doneItems/totalItems*100}%"></i></div>
+      <div class="flex small muted" style="justify-content:space-between;margin-top:6px"><span>${doneItems}/${totalItems} 个 JobItem 已结束 · ${j.items.length} 个交付项</span><span class="mono">估算 ${yuan(est)} · 实际 ${yuan(act)}</span></div>
       <div class="items"><table class="table"><thead><tr><th>SKU</th><th>产出</th><th>状态</th><th>估算</th><th>实际</th><th></th></tr></thead><tbody>
         ${j.items.map((it,ii)=>`<tr><td>${esc(skuInfo(it.sku).label)}</td><td>${it.out}</td>
           <td><span class="pill ${ST_CLS[it.status]}">${it.status}</span>${it.err?`<div class="small" style="color:var(--red);margin-top:3px">${esc(it.err)}</div>`:''}</td>
@@ -2048,10 +2184,10 @@ function renderTasks(){
   }).join('');
   const rows=skuCostRows();
   const full=rows.filter(([,r])=>r.full);
-  $('cost-table').innerHTML=`<thead><tr><th>SKU</th><th>产出</th><th>估算费</th><th>实际费</th><th>全套完成</th></tr></thead><tbody>
+  $('cost-table').innerHTML=`<thead><tr><th>SKU</th><th>产出</th><th>估算费</th><th>实际费</th><th>制作单完成</th></tr></thead><tbody>
     ${rows.map(([sid,r])=>`<tr><td>${esc(skuInfo(sid).label)}</td><td class="small">${Object.entries(r.outs).map(([o,s])=>`${o} <span class="pill ${ST_CLS[s]}">${s}</span>`).join(' ')}</td>
       <td class="mono">${yuan(r.est)}</td><td class="mono"><b>${yuan(r.act)}</b></td><td>${r.full?'<span class="pill green">是 · 计入 H2</span>':'<span class="pill gray">否</span>'}</td></tr>`).join('')}
-    <tr style="background:#fafafa"><td colspan="5" class="small">H2 = 已完成「自选清单 + 15s 视频」的 SKU 实际费均值（含返工与重试）：
+    <tr style="background:#fafafa"><td colspan="5" class="small">H2 = 制作单选中项全部成功的 SKU 实际费均值（含返工与重试）：
       ${full.length?`<b>${yuan(avgOf(full,'act'))}</b>（${full.length} 个 SKU，估算均值 ${yuan(avgOf(full,'est'))}）${avgOf(full,'act')<=15?' ≤ ¥15 ✓':' > ¥15 ✕'}`:'暂无'}</td></tr></tbody>`;
 }
 /* 重试只重跑失败项，已成功项不重复执行、不重复扣费 */
@@ -2066,35 +2202,46 @@ function cancelJob(ji){
   audit.push({obj:jobs[ji].id,op:'取消未完成项',from:`${n} 项未完成`,to:'已取消 · 不计费',who:OPERATOR,at:now()});
   refreshAll();toast(`已取消 ${n} 项，已成功项保留`);
 }
-/* 新建批量任务 */
+/* 新建批量任务：每个 SKU 一个 Job，批次用 parent 归组 */
 function renderBatch(){
   $('bm-skus').innerHTML=products.map(p=>p.skus.map(s=>{const ok=canGenerate(p);return `<li>
     <input type="checkbox" id="bm-${s.id}" value="${s.id}" ${ok?'checked':''} onchange="renderBatchEstimate()" style="margin-top:3px">
     <label for="bm-${s.id}" style="margin:0;font-weight:400;flex:1">${esc(p.short)} · ${esc(s.color)} ${esc(s.spec)}</label>
     ${ok?'':'<span class="pill amber">档案未完整</span>'}</li>`;}).join('')).join('');
-  renderBatchEstimate();
+  $('batch-plan-editor').innerHTML=planEditorHTML(batchPlan,'batch');
+  refreshPlanUI('batch');
 }
 function renderBatchEstimate(){
-  const t=TEMPLATES[$('bm-tpl').value];
   const picked=[...$('bm-skus').querySelectorAll('input:checked')].map(i=>i.value);
+  const n=planCount(batchPlan), per=planCost(batchPlan), over=per>BUDGET||!n;
   const blocked=picked.filter(s=>!canGenerate(skuInfo(s).p));
-  /* 已成功的同类产出不重复执行 */
-  const doneSet=new Set();jobs.forEach(j=>j.items.forEach(i=>{if(i.status==='成功')doneSet.add(i.sku+'|'+i.out);}));
-  const todo=[],skip=[];
-  picked.forEach(s=>t.outs.forEach(([o,c])=>(doneSet.has(s+'|'+o)?skip:todo).push({sku:s,out:o,est:c})));
-  $('bm-block').hidden=!blocked.length;
-  $('bm-block').textContent=blocked.length?`${blocked.map(s=>skuInfo(s).label).join('、')} 档案未完整，不能提交。`:'';
-  $('bm-submit').disabled=!picked.length||!!blocked.length||!todo.length;
+  const msgs=[];
+  if(blocked.length)msgs.push(`${blocked.map(s=>skuInfo(s).label).join('、')} 档案未完整，不能提交。`);
+  if(!n)msgs.push('至少选择 1 个交付项。');
+  else if(per>BUDGET)msgs.push(`单个 SKU 估算 ${yuan(per)}，超过 ¥${BUDGET} 硬上限。`);
+  $('bm-block').hidden=!msgs.length;
+  $('bm-block').textContent=msgs.join(' ');
+  $('bm-submit').disabled=!picked.length||!!blocked.length||over;
   $('bm-estimate').innerHTML=`<div class="stat"><span>SKU</span><b>${picked.length}</b><span>个</span></div>
-    <div class="stat"><span>待执行</span><b>${todo.length}</b><span>项${skip.length?`（跳过已成功 ${skip.length} 项）`:''}</span></div>
-    <div class="stat"><span>费用估算</span><b>${yuan(sum(todo,'est'))}</b></div>`;
-  return todo;
+    <div class="stat"><span>每 SKU</span><b>${n}</b><span>项</span></div>
+    <div class="stat"><span>Job</span><b>${picked.length}</b><span>个</span></div>
+    <div class="stat"><span>费用估算</span><b>${yuan(picked.length*per)}</b></div>`;
 }
 function submitBatch(){
-  const todo=renderBatchEstimate();if(!todo.length)return;
-  const id='J-1021-'+String(jobs.length+1).padStart(2,'0');
-  jobs.unshift({id,name:'批量 · '+TEMPLATES[$('bm-tpl').value].name,created:now(),items:todo.map(x=>({...x,status:'等待',act:0}))});
-  closeModal('batch-modal');refreshAll();toast(`已提交 ${id}，${todo.length} 项进入排队`);
+  const picked=[...$('bm-skus').querySelectorAll('input:checked')].map(i=>i.value);
+  const n=planCount(batchPlan), per=planCost(batchPlan);
+  if(!picked.length||!n||per>BUDGET)return;
+  if(picked.some(s=>!canGenerate(skuInfo(s).p)))return;
+  const stamp=now().replace(/[- :]/g,'').slice(0,8);
+  const parent='B-'+stamp, base='J-'+stamp;
+  picked.forEach((sid,i)=>{
+    const info=skuInfo(sid);
+    jobs.unshift({id:`${base}-${String(i+1).padStart(2,'0')}`,parent,
+      name:`${info.p.short} · ${info.s.color} ${info.s.spec} · 批量`,created:now(),
+      plan:batchPlan.map(x=>({...x})),items:planItems(sid,batchPlan)});
+  });
+  closeModal('batch-modal');refreshAll();
+  toast(`已提交 ${picked.length} 个 SKU（${picked.length} 个 Job），批次 ${parent}`);
 }
 function openBatch(){renderBatch();openModal('batch-modal');}
 
@@ -2128,26 +2275,46 @@ function renderAudit(){
   $('audit-table').innerHTML=`<thead><tr><th>对象</th><th>操作</th><th>原值 → 新值</th><th>操作人 · 时间</th></tr></thead><tbody>
     ${audit.slice().reverse().map(a=>`<tr><td>${esc(a.obj)}</td><td>${esc(a.op)}</td><td>${esc(a.from)} → <b>${esc(a.to)}</b></td><td class="small muted">${a.who} · ${a.at}</td></tr>`).join('')}</tbody>`;
 }
-/* 导出清单：只导出已确认版本，按渠道分目录；受影响商品不导出 */
+/* 导出清单：只导出制作单已完成的 SKU；合规标识在导出时合成 */
 function renderExport(){
-  const ok=products.filter(p=>jobs.some(j=>j.items.some(i=>i.status==='成功'&&skuInfo(i.sku).p.id===p.id)));
-  const rows=[];
-  ok.forEach(p=>{
-    const doneSkus=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='图片 8 项'&&i.status==='成功')));
-    if(!doneSkus.length)return;
-    const vids=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='15s 视频'&&i.status==='成功')));
-    const names=doneSkus.map(s=>s.color+(p.skus.filter(x=>x.color===s.color).length>1?' '+s.spec:'')).join(' / ');
-    rows.push({p,dir:'taobao/',file:`${p.id}_{sku}_main_01..03.jpg`,n:doneSkus.length*3,size:'800×800',skus:names});
-    rows.push({p,dir:'taobao/',file:`${p.id}_{sku}_scene_01..05.jpg`,n:doneSkus.length*5,size:'800×800',skus:names});
-    rows.push({p,dir:'amazon/',file:`${p.id}_{sku}_main_white.jpg`,n:doneSkus.length,size:'1600×1600',skus:names});
-    if(vids.length)rows.push({p,dir:'douyin/',file:`${p.id}_{sku}_show_15s.mp4`,n:vids.length,size:'1080×1920',skus:vids.map(s=>s.color+' '+s.spec).join(' / ')});
+  const rows=[], seen=new Set();
+  jobs.forEach(j=>{
+    if(!j.plan||!jobPlanDone(j))return;
+    const it0=j.items[0];if(!it0)return;
+    const info=skuInfo(it0.sku);if(!info)return;
+    if(seen.has(it0.sku))return;seen.add(it0.sku);
+    j.plan.filter(p=>p.count>0).forEach(p=>{
+      const d=DELIV[p.key];
+      const dir=p.key==='video'?'douyin/':p.key==='white'?'amazon/':'taobao/';
+      const size=p.key==='video'?'1080×1920':p.key==='white'?'1600×1600':'800×800';
+      const seq=p.count>1?`01..${String(p.count).padStart(2,'0')}`:'01';
+      rows.push({p:info.p,dir,file:`${info.p.id}_${info.s.id}_${p.key}_${seq}.${d.ext}`,n:p.count,size,
+        skus:`${info.s.color} ${info.s.spec}`,usage:d.label});
+    });
   });
+  rows.sort((a,b)=>`${a.p.id}${a.dir}${a.file}`.localeCompare(`${b.p.id}${b.dir}${b.file}`));
   const aff=products.filter(p=>p.affected);
+  const cps=['cp-label','cp-watermark','cp-meta'].filter(id=>$(id)&&$(id).checked).length;
   $('export-body').innerHTML=`${aff.length?`<div class="notice red">${aff.map(p=>`「${esc(p.short)}」${p.affected} 份素材受影响`).join('；')}，需重新校验后才能导出。
       <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="products.forEach(p=>p.affected=0);refreshAll()">演示：标记已重新校验</button></div>`:''}
-    <table class="table"><thead><tr><th>目录 / 文件名</th><th>数量</th><th>尺寸</th><th>对应 SKU</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr style="${r.p.affected?'opacity:.45':''}"><td class="mono small">${r.dir}${esc(r.file)}</td><td>${r.n}</td><td class="mono">${r.size}</td><td class="small">${esc(r.p.short)} · ${esc(r.skus)}</td></tr>`).join('')}</tbody></table>
-    <p class="small muted" style="margin-top:10px">只导出已确认版本。尺寸为示例规格；文件名中 {sku} 替换为 SKU 编码。</p>`;
+    <div class="flex" style="justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <span class="small muted">只导出制作单完成的 SKU；共 ${rows.length} 行、${rows.reduce((n,r)=>n+r.n,0)} 个文件</span>
+      <span class="pill ${cps?'green':'amber'}">${cps?`导出合成 ${cps} 项标识`:'未启用合规标识'}</span>
+    </div>
+    ${rows.length?`<table class="table"><thead><tr><th>目录 / 文件名</th><th>数量</th><th>尺寸</th><th>对应 SKU</th><th>合规</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr style="${r.p.affected?'opacity:.45':''}"><td class="mono small">${r.dir}${esc(r.file)}</td><td>${r.n}</td><td class="mono">${r.size}</td><td class="small">${esc(r.p.short)} · ${esc(r.skus)}</td><td><span class="pill green">导出合成</span></td></tr>`).join('')}</tbody></table>`
+      :'<div class="notice">还没有制作单完成的 SKU，先在任务中心跑完一套。</div>'}
+    <p class="small muted" style="margin-top:10px">母版不带标识；导出包合成角标 / 水印 / 元数据。尺寸为示例规格；文件名中的 SKU 为示例 id，正式版替换为 SKU 编码。</p>`;
+}
+function doExport(){
+  const names=['cp-label','cp-watermark','cp-meta'].filter(id=>$(id)&&$(id).checked)
+    .map(id=>({'cp-label':'显式角标','cp-watermark':'隐式水印','cp-meta':'元数据'}[id]));
+  if(!names.length){toast('至少选择一种合规标识');return;}
+  const rows=document.querySelectorAll('#export-body tbody tr').length;
+  if(!rows){toast('没有可导出的制作单');return;}
+  audit.push({obj:'导出包',op:'导出素材包',from:'母版无标识',to:`合成 ${names.join(' / ')} · ${rows} 行`,who:OPERATOR,at:now()});
+  refreshAll();
+  toast(`已打包：母版保留无标识，导出包合成 ${names.join(' / ')}`);
 }
 
 /* ============ 渠道与模型 ============ */
@@ -2555,7 +2722,6 @@ function refreshAll(){
   renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderChannels();
 }
 document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
-$('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k}">${t.name}</option>`).join('');
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
 refreshSidebarModels();
@@ -2566,6 +2732,7 @@ if(__hash){
   if(TITLES[__pg])go(__pg);
   if(__pg==='products'&&__arg==='new'){openProductModal();}
   else if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
+  else if(__pg==='tasks'&&__arg==='batch'){openBatch();}
 }
 </script>
 </body>
