@@ -93,6 +93,13 @@
 - ✅ **文档结构整理**：`README.md` 移至根目录并改为项目索引；`AGENTS.md` 精简为导航页（只留"去哪看"）；新增 `PHASE.md`；恢复 `infrastructure/测试环境中间件访问说明.md`；清理 `TD-001` 中对已移除文档的引用。
 - ⬜ **未开始**：图层拆分验证。
 
+### 2026-10-25
+
+- ✅ **商品档案原型重做（按 TD-004）**：列表改表格（搜索 / 品类 / 状态 / 来源筛选、待补聚合条、价格区间、素材与受影响）；详情拆 6 区（基础 / 品类必填 / SKU / 图片与证据 / 变更影响 / 审计）；SKU 矩阵生成 + 批量改价；字段来源四态与「拦生成 / 仅拦交付」分级。
+- ✅ **阻断逻辑改造**：`canGenerate` 只看 `block_scope=generate` 的字段，`delivery` 字段不再阻塞生成；制作台阻断提示同步。
+- ✅ **深链**：`#products/{id}/{tab}` 可直接打开详情与页签，便于评审与自动化截图。
+- ⚠️ 原型阶段：商品仍存 localStorage；后端 `product/sku` 表与 `0003` 迁移待实施。
+
 ### 2026-10-23
 
 - ✅ **补上持久化**：新增 `apps/core/db.py`、`apps/core/models.py`（`job` / `asset` / `provider_call` 三表）与 Alembic 迁移 `migrations/versions/0001_init.py`。

@@ -289,6 +289,24 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip-model{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--line-2);color:var(--ink);white-space:nowrap}
 
+/* 商品档案（重构） */
+.product-table{width:100%;border-collapse:collapse}
+.product-table th,.product-table td{padding:10px 14px;font-size:12.5px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+.product-table th{font-size:11.5px;color:var(--muted);font-weight:600;background:#fafbfc}
+.product-table tbody tr{cursor:pointer;transition:.12s}
+.product-table tbody tr:hover{background:#fafbff}
+.product-cell{display:flex;gap:10px;align-items:center;min-width:0}
+.product-cell .n{display:block;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.product-cell .s{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);margin-top:2px}
+.pd-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+.pd-tab{padding:9px 13px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.pd-tab.active{color:var(--ink);border-bottom-color:var(--brand);font-weight:600}
+.scope-tag{display:inline-block;font-size:10.5px;line-height:1.7;padding:0 7px;border-radius:10px;background:var(--line-2);color:var(--muted);white-space:nowrap}
+.scope-tag.gen{background:#fdecec;color:#b23b3b}
+.attr-table input{padding:5px 8px}
+.sku-table input{padding:5px 8px;font-size:12px}
+.product-impact{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
+
 /* 生图工作台（三栏） */
 #page-genstudio{max-width:1400px}
 .genstudio{display:grid;grid-template-columns:200px 340px 1fr;gap:14px;height:calc(100vh - 44px);min-height:540px}
@@ -441,27 +459,49 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 
       <!-- ============ PAGE: PRODUCTS ============ -->
       <section class="page" id="page-products">
-        <div class="page-head">
-          <div><h1>商品档案</h1><p>一次录入真实商品资料，供后续所有制作模块调用。商品事实只来自商家资料，AI 只整理不补全。</p></div>
-          <div class="flex">
-            <button class="btn btn-soft" onclick="openLinkModal()">🔗 链接导入</button>
-            <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+        <div id="products-list-view">
+          <div class="page-head">
+            <div><h1>商品档案</h1><p>一次录入真实商品资料，供后续所有制作模块调用。商品事实只来自商家资料，AI 只整理不补全。</p></div>
+            <div class="flex">
+              <button class="btn btn-soft" onclick="openLinkModal()">🔗 链接导入</button>
+              <button class="btn btn-ghost" onclick="toast('原型：Excel 批量导入在 P1，先做模板 + 校验 + 草稿')">⇪ 批量导入</button>
+              <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+            </div>
+          </div>
+          <div class="notice amber" id="product-pending-bar" hidden></div>
+          <div class="card">
+            <div class="card-h" style="gap:10px;flex-wrap:wrap">
+              <div class="flex" style="flex:1;min-width:0;flex-wrap:wrap">
+                <input class="input" id="product-search" placeholder="搜索商品名 / 编码" style="width:200px" oninput="productQuery=this.value;renderProductList()">
+                <select class="select" id="product-cat" style="width:120px" onchange="productCat=this.value;renderProductList()">
+                  <option value="all">全部品类</option><option value="beauty">美妆个护</option><option value="home">家居日用</option><option value="digital">3C 配件</option>
+                </select>
+                <select class="select" id="product-status" style="width:130px" onchange="productStatus=this.value;renderProductList()">
+                  <option value="all">全部状态</option><option value="complete">档案完整</option><option value="confirm">待确认</option><option value="delivery">仅缺交付</option><option value="pending">阻断生成</option>
+                </select>
+                <select class="select" id="product-source" style="width:120px" onchange="productSource=this.value;renderProductList()">
+                  <option value="all">全部来源</option><option value="manual">手工新建</option><option value="link">链接导入</option>
+                </select>
+              </div>
+              <span class="pill gray" id="product-count"></span>
+            </div>
+            <div class="card-b" style="padding:0" id="product-table"></div>
           </div>
         </div>
-        <div class="two-col">
-          <div class="card">
-            <div class="card-h">
-              <div class="flex"><h3>商品列表</h3><span class="pill gray" id="product-count"></span></div>
-              <div class="seg" id="product-filter" role="group" aria-label="按品类筛选">
-                <button class="active" data-v="all">全部</button><button data-v="beauty">美妆</button><button data-v="home">家居</button><button data-v="digital">3C</button>
-              </div>
+
+        <div id="products-detail-view" hidden>
+          <div class="page-head">
+            <div>
+              <button class="btn btn-ghost btn-sm" onclick="closeProductDetail()" style="margin-bottom:8px">← 返回列表</button>
+              <h1 id="pd-title"></h1><p id="pd-sub"></p>
             </div>
-            <div class="card-b" id="product-list"></div>
+            <div class="flex">
+              <span class="pill" id="pd-status"></span>
+              <button class="btn btn-primary" id="pd-enter" onclick="enterStudio(curPid)">进入制作</button>
+            </div>
           </div>
-          <div class="card" id="product-detail">
-            <div class="card-h"><h3>商品详情</h3><span class="pill" id="pd-status"></span></div>
-            <div class="card-b" id="product-detail-body"></div>
-          </div>
+          <div class="pd-tabs" id="pd-tabs"></div>
+          <div id="pd-body"></div>
         </div>
       </section>
 
@@ -755,6 +795,27 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   </div>
 </div>
 
+<div class="modal-back" id="price-batch-modal">
+  <div class="modal" style="max-width:420px" role="dialog" aria-modal="true" aria-labelledby="bp-title">
+    <div class="modal-h"><h3 id="bp-title">批量改价</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('price-batch-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="notice">价格改动属于商品事实变更，会写入审计，并把引用该商品的素材标记为受影响。</div>
+      <div class="field"><label for="bp-mode">方式</label>
+        <select class="select" id="bp-mode">
+          <option value="set">设为固定价</option>
+          <option value="inc">增加 / 减少金额</option>
+          <option value="pct">按百分比调整</option>
+        </select>
+      </div>
+      <div class="field"><label for="bp-value">数值</label><input class="input" id="bp-value" inputmode="decimal" placeholder="如 129 / -10 / 5"></div>
+      <div class="flex" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('price-batch-modal')">取消</button>
+        <button type="button" class="btn btn-primary" onclick="applyBatchPrice()">应用</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-back" id="link-modal">
   <div class="modal" style="max-width:720px" role="dialog" aria-modal="true" aria-labelledby="lm-title">
     <div class="modal-h"><h3 id="lm-title">链接导入商品</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('link-modal')">✕</button></div>
@@ -923,13 +984,22 @@ try{
   saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
 }catch(e){}
 const pById=id=>products.find(p=>p.id===id);
+const FIELD_SCOPE={
+  beauty:{'容量':'generate','成分':'generate','适用说明':'generate','包装多角度图':'delivery'},
+  home:{'尺寸':'generate','材质':'generate','颜色':'delivery','安装方式':'generate'},
+  digital:{'型号':'generate','接口':'generate','兼容范围':'generate','尺寸':'delivery'},
+};
 function pStatus(p){
-  const s=Object.values(p.fields).map(f=>f.src);
-  if(s.includes('missing'))return{text:'待补字段',cls:'amber'};
-  if(s.includes('ai'))return{text:'待确认',cls:'amber'};
-  return{text:'档案完整',cls:'green'};
+  const miss=Object.values(p.fields).filter(f=>f.src!=='human');
+  if(!miss.length)return{key:'complete',text:'档案完整',cls:'green'};
+  const gen=Object.entries(p.fields).filter(([k,f])=>f.src!=='human'&&fieldScope(p,k)==='generate');
+  if(gen.length){
+    const hasMissing=gen.some(([,f])=>f.src==='missing');
+    return{key:hasMissing?'pending':'confirm',text:hasMissing?`待补 ${gen.length}`:`待确认 ${gen.length}`,cls:'amber'};
+  }
+  return{key:'delivery',text:`仅缺交付 ${miss.length}`,cls:'brand'};
 }
-const canGenerate=p=>pStatus(p).text==='档案完整';
+const canGenerate=p=>Object.entries(p.fields).every(([k,f])=>f.src==='human'||fieldScope(p,k)!=='generate');
 function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid);if(s)return{p,s,label:`${p.short} · ${s.color} ${s.spec}`};}return null;}
 
 /* 任务按「SKU × 产出」逐项记录状态与费用；失败 / 取消项不计实际费，重试成功才计 */
@@ -1098,63 +1168,303 @@ function renderOverviewProducts(){
       <span class="pill ${st.cls}">${st.text}</span></button>`;}).join('');
 }
 
-/* ============ 商品档案 ============ */
-let curPid='p1', productFilter='all';
-onSeg('product-filter',v=>{productFilter=v;renderProductList();});
-function renderProductList(){
-  const list=products.filter(p=>productFilter==='all'||p.cat===productFilter);
-  $('product-count').textContent=list.length+' 个';
-  $('product-list').innerHTML=list.length?list.map(p=>{const st=pStatus(p),n=assetCount(p.id);return `
-    <div class="prod-row ${p.id===curPid?'sel':''}">
-      <button type="button" class="pick" onclick="showProduct('${p.id}')" aria-pressed="${p.id===curPid}">
-        <span class="thumb" style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex:none">${productSVG(CATS[p.cat].subject)}</span>
-        <span style="min-width:0"><span class="l-name">${esc(p.name)}</span><span class="l-sub">${CATS[p.cat].name} · ${p.skus.length} 个 SKU · ${n?`已产出素材 ${n} 份`:'暂无素材'}</span></span>
-      </button>
-      ${p.affected?`<span class="pill red">${p.affected} 份素材受影响</span>`:''}
-      <span class="pill ${st.cls}">${st.text}</span>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="enterStudio('${p.id}')">进入制作</button>
-    </div>`;}).join(''):'<p class="muted small">该品类暂无商品</p>';
-}
-/* 已产出素材份数：任务中成功的产出项 */
+/* ============ 商品档案（重构版） ============ */
+let curPid='p1', productQuery='', productCat='all', productStatus='all', productSource='all';
+let pdTab='basic', pdOpen=false;
+
 const assetCount=pid=>jobs.reduce((n,j)=>n+j.items.filter(i=>i.status==='成功'&&skuInfo(i.sku).p.id===pid).length,0);
-function showProduct(pid){curPid=pid;renderProductList();renderProductDetail();}
-const SRC_TAG={human:'<span class="src-tag human">人工录入</span>',ai:'<span class="src-tag ai">AI 提取 · 待确认</span>',missing:'<span class="pill amber">缺失</span>'};
+const SRC_TAG={
+  human:'<span class="src-tag human">人工录入</span>',
+  ai:'<span class="src-tag ai">AI 提取 · 待确认</span>',
+  missing:'<span class="pill amber">缺失</span>',
+};
+function fieldScope(p,key){return (FIELD_SCOPE[p.cat]||{})[key]||'generate';}
+function missingFields(p){return Object.entries(p.fields).filter(([,f])=>f.src!=='human');}
+function generateMissing(p){return missingFields(p).filter(([k])=>fieldScope(p,k)==='generate');}
+function deliveryMissing(p){return missingFields(p).filter(([k])=>fieldScope(p,k)!=='generate');}
+function canDeliver(p){return missingFields(p).length===0;}
+
+function productFiltered(){
+  const q=productQuery.trim().toLowerCase();
+  return products.filter(p=>{
+    if(productCat!=='all'&&p.cat!==productCat)return false;
+    if(productSource!=='all'&&(p.source||'manual')!==productSource)return false;
+    if(productStatus!=='all'&&pStatus(p).key!==productStatus)return false;
+    if(q&&!`${p.name} ${p.short||''} ${p.code||''}`.toLowerCase().includes(q))return false;
+    return true;
+  });
+}
+function renderPendingBar(){
+  const bar=$('product-pending-bar');if(!bar)return;
+  const dirty=products.filter(p=>missingFields(p).length);
+  const n=dirty.reduce((s,p)=>s+missingFields(p).length,0);
+  if(!n){bar.hidden=true;return;}
+  bar.hidden=false;
+  bar.innerHTML=`待补 / 待确认字段共 <b>${n}</b> 项，涉及 ${dirty.length} 个商品。
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="productStatus='pending';document.getElementById('product-status').value='pending';renderProductList()">只看阻断生成的</button>`;
+}
+function renderProductList(){
+  const list=productFiltered();
+  $('product-count').textContent=`${list.length} / ${products.length} 个`;
+  renderPendingBar();
+  if(!list.length){
+    $('product-table').innerHTML='<div class="gs-empty" style="margin:16px"><div>没有匹配的商品<br><span class="small muted">调整筛选，或新建 / 链接导入</span></div></div>';
+    return;
+  }
+  $('product-table').innerHTML=`<table class="product-table">
+    <thead><tr><th style="width:34%">商品</th><th>品类</th><th>SKU</th><th>价格</th><th>档案</th><th>素材</th><th>更新</th><th></th></tr></thead>
+    <tbody>${list.map(p=>{
+      const st=pStatus(p),n=assetCount(p.id),prices=p.skus.map(s=>s.price);
+      const range=prices.length?(Math.min(...prices)===Math.max(...prices)?`¥${prices[0]}`:`¥${Math.min(...prices)}–${Math.max(...prices)}`):'—';
+      const src=p.source==='link'?'<span class="pill gray">链接导入</span>':'<span class="pill gray">手工新建</span>';
+      return `<tr onclick="openProduct('${p.id}')">
+        <td><div class="product-cell"><span class="thumb" style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex:none">${productSVG(CATS[p.cat].subject)}</span>
+          <span style="min-width:0"><span class="n">${esc(p.name)}</span><span class="s">${esc(p.short||'')} ${src}</span></span></div></td>
+        <td>${CATS[p.cat].name}</td>
+        <td>${p.skus.length}</td>
+        <td class="mono">${range}</td>
+        <td><span class="pill ${st.cls}">${st.text}</span></td>
+        <td>${n?`${n} 份`:'—'}${p.affected?` <span class="pill red">${p.affected} 受影响</span>`:''}</td>
+        <td class="small muted">${esc(p.updatedAt||'—')}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();enterStudio('${p.id}')">进入制作</button></td>
+      </tr>`;}).join('')}</tbody></table>`;
+}
+function openProduct(pid){
+  curPid=pid;pdOpen=true;pdTab='basic';
+  $('products-list-view').hidden=true;
+  $('products-detail-view').hidden=false;
+  document.querySelector('.content').scrollTop=0;
+  renderProductDetail();
+}
+function closeProductDetail(){
+  pdOpen=false;
+  $('products-detail-view').hidden=true;
+  $('products-list-view').hidden=false;
+  renderProductList();
+}
+function showProduct(pid){openProduct(pid);}
+
 function renderProductDetail(){
-  const p=pById(curPid), st=pStatus(p), n=assetCount(p.id);
+  if(!pdOpen)return;
+  const p=pById(curPid);if(!p){closeProductDetail();return;}
+  const st=pStatus(p),miss=missingFields(p),gen=generateMissing(p),del=deliveryMissing(p);
+  $('pd-title').textContent=p.name;
+  $('pd-sub').textContent=`${CATS[p.cat].name} · ${p.skus.length} 个 SKU · 已确认 ${Object.keys(p.fields).length-miss.length}/${Object.keys(p.fields).length} 字段`;
   $('pd-status').textContent=st.text;$('pd-status').className='pill '+st.cls;
-  const miss=Object.entries(p.fields).filter(([,f])=>f.src!=='human').map(([k])=>k);
-  $('product-detail-body').innerHTML=`
-    <div class="field"><label for="pd-name">商品名称</label><input class="input" id="pd-name" value="${esc(p.name)}" data-k="name"></div>
-    <div class="field"><label>品类</label><input class="input" value="${CATS[p.cat].name}" readonly aria-readonly="true"></div>
-    <div class="field"><label for="pd-pitch">卖点</label><textarea class="textarea" id="pd-pitch" data-k="pitch">${esc(p.pitch)}</textarea></div>
-    <div class="field"><label>品类必填字段 · 每项标注来源</label>
-      <table class="table kv-table"><tbody>${Object.entries(p.fields).map(([k,f])=>`<tr>
-        <td>${k}<span class="req" style="color:var(--red)">*</span></td>
-        <td><input class="input" value="${esc(f.v)}" data-f="${esc(k)}" aria-label="${esc(k)}" placeholder="${f.src==='missing'?'需商家提供，不允许空值':''}"></td>
-        <td style="white-space:nowrap">${SRC_TAG[f.src]}${f.src==='ai'?` <button type="button" class="btn btn-soft btn-sm" onclick="confirmField('${esc(k)}')">确认</button>`:''}</td></tr>`).join('')}</tbody></table>
-    </div>
-    <div class="field"><label>SKU 列表</label>
-      <table class="table"><thead><tr><th>颜色</th><th>规格</th><th>售价</th></tr></thead>
-      <tbody>${p.skus.map(s=>`<tr><td>${esc(s.color)}</td><td>${esc(s.spec)}</td><td>¥${s.price}</td></tr>`).join('')}</tbody></table>
-    </div>
-    ${miss.length?`<div class="notice">待处理字段：${miss.join('、')}。补齐并人工确认前，场景图 / 主图 / 视频生成会被阻断，不允许空值静默通过。</div>`:''}
-    <div class="notice red" id="pd-impact" hidden>修改商品资料后，已引用它的 ${n} 份素材将被标记「受影响」，需重新校验后才能交付。</div>
-    <div class="flex" style="justify-content:flex-end"><button type="button" class="btn btn-primary btn-sm" id="pd-save" disabled onclick="saveProduct()">保存修改</button></div>`;
-  $('product-detail-body').oninput=()=>{$('pd-save').disabled=false;$('pd-impact').hidden=!n;};
+  const enterBtn=$('pd-enter');
+  enterBtn.disabled=gen.length>0;
+  enterBtn.title=gen.length?`还有 ${gen.length} 个字段阻断生成`:'';
+
+  const tabs=[
+    ['basic','基础信息',''],
+    ['attrs','品类必填',miss.length?`<span class="pill amber">${miss.length}</span>`:''],
+    ['sku','SKU',`<span class="pill gray">${p.skus.length}</span>`],
+    ['images','图片与证据',''],
+    ['impact','变更影响',p.affected?`<span class="pill red">${p.affected}</span>`:''],
+    ['audit','审计',''],
+  ];
+  $('pd-tabs').innerHTML=tabs.map(([k,label,badge])=>`<button type="button" class="pd-tab ${pdTab===k?'active':''}" onclick="pdTab='${k}';renderProductDetail()">${label} ${badge}</button>`).join('');
+
+  if(pdTab==='basic')return renderPdBasic(p,gen,del);
+  if(pdTab==='attrs')return renderPdAttrs(p);
+  if(pdTab==='sku')return renderPdSku(p);
+  if(pdTab==='images')return renderPdImages(p);
+  if(pdTab==='impact')return renderPdImpact(p);
+  return renderPdAudit(p);
 }
-function saveProduct(){
-  const p=pById(curPid), body=$('product-detail-body'), changes=[];
-  body.querySelectorAll('[data-k]').forEach(el=>{const k=el.dataset.k,v=el.value.trim();if(v!==p[k]){changes.push([k==='name'?'名称':'卖点',p[k],v]);p[k]=v;}});
-  body.querySelectorAll('[data-f]').forEach(el=>{const f=p.fields[el.dataset.f],v=el.value.trim();if(v!==f.v){changes.push([el.dataset.f,f.v||'（空）',v||'（空）']);f.v=v;f.src=v?'human':'missing';}});
+function renderPdBasic(p,gen,del){
+  $('pd-body').innerHTML=`<div class="two-col">
+    <div class="card"><div class="card-h"><h3>基础信息</h3><span class="sub">改品类会重算必填字段</span></div>
+      <div class="card-b">
+        <div class="row cols-2">
+          <div class="field"><label>商品名称</label><input class="input" data-k="name" value="${esc(p.name)}"></div>
+          <div class="field"><label>商品编码</label><input class="input mono" data-k="code" value="${esc(p.code||'')}" placeholder="如 SKU-CODE-001"></div>
+        </div>
+        <div class="row cols-2">
+          <div class="field"><label>短名</label><input class="input" data-k="short" value="${esc(p.short||'')}"></div>
+          <div class="field"><label>品类</label><input class="input" value="${CATS[p.cat].name}" readonly aria-readonly="true"></div>
+        </div>
+        <div class="field"><label>品牌</label><input class="input" data-k="brand" value="${esc(p.brand||'')}" placeholder="用于品牌 VI 与禁用词"></div>
+        <div class="field"><label>卖点（最多 3 条）</label><textarea class="textarea" data-k="pitch" rows="3">${esc(p.pitch||'')}</textarea></div>
+        <div class="field"><label>来源</label>
+          <div class="flex">${p.source==='link'?`<span class="pill gray">链接导入</span><span class="small muted mono">${esc(p.sourceUrl||'')}</span>`:'<span class="pill gray">手工新建</span>'}</div>
+        </div>
+        <div class="flex" style="justify-content:flex-end"><button type="button" class="btn btn-primary btn-sm" onclick="saveBasic()">保存基础信息</button></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-h"><h3>档案完整度</h3><span class="pill ${pStatus(p).cls}">${pStatus(p).text}</span></div>
+      <div class="card-b">
+        <div class="product-impact"><b>已确认</b> ${Object.keys(p.fields).length-missingFields(p).length} / ${Object.keys(p.fields).length} 字段<div class="small muted" style="margin-top:6px">解析/提取的值必须逐项确认后才算商品事实。</div></div>
+        <div class="product-impact"><b>阻断生成</b> ${gen.length} 项
+          <div class="chips" style="margin-top:6px">${gen.length?gen.map(([k])=>`<span class="scope-tag gen">${esc(k)}</span>`).join(''):'<span class="small muted">无</span>'}</div></div>
+        <div class="product-impact"><b>仅拦交付</b> ${del.length} 项
+          <div class="chips" style="margin-top:6px">${del.length?del.map(([k])=>`<span class="scope-tag">${esc(k)}</span>`).join(''):'<span class="small muted">无</span>'}</div></div>
+        <div class="product-impact"><b>受影响素材</b> ${p.affected||0} 份
+          <div class="small muted" style="margin-top:6px">商品资料改动后，引用它的素材会被标记，需复检或重生成。</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderPdAttrs(p){
+  const total=Object.keys(p.fields).length,confirmed=total-missingFields(p).length;
+  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>品类必填字段</h3><span class="pill ${confirmed===total?'green':'amber'}">已确认 ${confirmed}/${total}</span></div>
+    <div class="card-b">
+      <div class="notice">高敏字段（成分、容量、认证、型号、接口）必须逐项确认；其余可核对后批量确认。</div>
+      <table class="table attr-table"><thead><tr><th>字段</th><th>值</th><th>来源</th><th>阻断</th><th></th></tr></thead>
+      <tbody>${Object.entries(p.fields).map(([k,f])=>{
+        const scope=fieldScope(p,k);
+        return `<tr>
+          <td>${esc(k)}<span class="req" style="color:var(--red)">*</span></td>
+          <td><input class="input" data-f="${esc(k)}" value="${esc(f.v)}" placeholder="${f.src==='missing'?'需商家提供，不允许空值':''}"></td>
+          <td>${SRC_TAG[f.src]||SRC_TAG.missing}</td>
+          <td><span class="scope-tag ${scope==='generate'?'gen':''}">${scope==='generate'?'拦生成':'仅拦交付'}</span></td>
+          <td>${f.src==='ai'?`<button type="button" class="btn btn-soft btn-sm" onclick="confirmAttr('${esc(k)}')">确认</button>`:f.src==='human'?'<span class="small muted">已确认</span>':''}</td>
+        </tr>`;}).join('')}</tbody></table>
+      <div class="flex" style="justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="confirmAllAttrs()">批量确认非高敏字段</button>
+      </div>
+    </div></div>`;
+  $('pd-body').onchange=e=>{
+    const el=e.target.closest('[data-f]');if(!el)return;
+    setAttr(el.dataset.f,el.value);
+  };
+}
+function renderPdSku(p){
+  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>SKU 列表</h3>
+      <div class="flex"><button type="button" class="btn btn-ghost btn-sm" onclick="openModal('price-batch-modal')">批量改价</button>
+      <button type="button" class="btn btn-soft btn-sm" onclick="addSku()">＋ 新增 SKU</button></div></div>
+    <div class="card-b">
+      ${p.skus.length?`<table class="table sku-table"><thead><tr><th>颜色</th><th>规格</th><th style="width:130px">售价（元）</th><th></th></tr></thead>
+      <tbody>${p.skus.map(s=>`<tr>
+        <td><input class="input" value="${esc(s.color)}" onchange="setSku('${s.id}','color',this.value)"></td>
+        <td><input class="input" value="${esc(s.spec)}" onchange="setSku('${s.id}','spec',this.value)"></td>
+        <td><input class="input" inputmode="decimal" value="${s.price}" onchange="setSku('${s.id}','price',this.value)"></td>
+        <td><button type="button" class="btn btn-ghost btn-sm" onclick="delSku('${s.id}')">删除</button></td>
+      </tr>`).join('')}</tbody></table>`:'<div class="notice">还没有 SKU。单规格商品也建议建一个「默认 SKU」，避免出现无 SKU 分支。</div>'}
+      <hr class="hr">
+      <div class="field"><label>矩阵生成</label>
+        <div class="row cols-3">
+          <input class="input" id="mx-colors" placeholder="颜色，逗号分隔：青绿,米白">
+          <input class="input" id="mx-specs" placeholder="规格，逗号分隔：150ml,50ml">
+          <button type="button" class="btn btn-soft" onclick="genMatrix()">生成组合</button>
+        </div>
+        <p class="small muted" style="margin-top:6px">已存在的组合会跳过；价格取第一个 SKU 或 0，可再批量改价。</p>
+      </div>
+    </div></div>`;
+}
+function renderPdImages(p){
+  const sub=CATS[p.cat].subject;
+  $('pd-body').innerHTML=`<div class="notice">图片是商品事实的证据：原图、包装多角度、成分表 / 检测报告。每张标注用途，供字段引用。</div>
+    <div class="three-col">${[['原始图','主图源图，≥3 张'],['包装多角度','瓶身 / 盒身 / 标签'],['证据图','成分表 / 检测报告 / 认证']].map(([t,d])=>
+      `<div class="card"><div class="card-h"><h3>${t}</h3><span class="sub">${d}</span></div>
+        <div class="card-b" style="text-align:center">
+          <div class="ph sq" style="margin:0 auto 10px">${productSVG(sub)}</div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：上传后落 raw 桶，不参与版本链')">上传</button>
+        </div></div>`).join('')}</div>`;
+}
+function renderPdImpact(p){
+  const n=p.affected||0;
+  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>变更影响</h3><span class="pill ${n?'red':'gray'}">${n} 份素材受影响</span></div>
+    <div class="card-b">
+      <div class="product-impact"><b>本次变更</b>：商品资料修改后，引用它的素材会被标记为 stale，不可确认、不可进导出包。
+        <div class="small muted" style="margin-top:6px">已交付的素材包按快照保留，不追回。</div></div>
+      ${n?`<table class="table"><thead><tr><th>素材</th><th>类型</th><th>状态</th><th>处理</th></tr></thead>
+        <tbody>${Array.from({length:n}).map((_,i)=>`<tr><td>${esc(p.short)} · 素材 ${i+1}</td><td>主图 / 场景</td><td><span class="pill amber">待复检</span></td>
+          <td><button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：只重跑校验，不重新生成')">重新校验</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：加入重生成队列')">重新生成</button></td></tr>`).join('')}</tbody></table>`
+        :'<div class="notice">没有受影响素材。</div>'}
+    </div></div>`;
+}
+function renderPdAudit(p){
+  const rows=audit.filter(a=>a.obj===p.name||a.obj===p.short||(p.short&&a.obj.includes(p.short))).slice().reverse();
+  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>审计</h3><span class="sub">只读、不可删</span></div>
+    <div class="card-b">${rows.length?`<table class="table"><thead><tr><th>对象</th><th>操作</th><th>原值 → 新值</th><th>人 / 时间</th></tr></thead>
+      <tbody>${rows.map(a=>`<tr><td>${esc(a.obj)}</td><td>${esc(a.op)}</td><td>${esc(a.from)} → <b>${esc(a.to)}</b></td><td class="small muted">${esc(a.who)} · ${esc(a.at)}</td></tr>`).join('')}</tbody></table>`
+      :'<div class="notice">还没有与该商品相关的审计记录。</div>'}</div></div>`;
+}
+function saveBasic(){
+  const p=pById(curPid),body=$('pd-body'),changes=[];
+  body.querySelectorAll('[data-k]').forEach(el=>{
+    const k=el.dataset.k,v=el.value.trim();
+    if(v!==(p[k]||'')){changes.push([k,p[k]||'（空）',v||'（空）']);p[k]=v;}
+  });
   if(!changes.length){toast('没有改动');return;}
-  changes.forEach(([k,a,b])=>audit.push({obj:p.short,op:'修改商品资料 · '+k,from:a,to:b,who:OPERATOR,at:now()}));
-  const n=assetCount(p.id);if(n)p.affected=n;
-  refreshAll();toast(n?`已保存，${n} 份素材标记为受影响`:'已保存');
+  changes.forEach(([k,a,b])=>audit.push({obj:p.short||p.name,op:'修改基础信息 · '+k,from:a,to:b,who:OPERATOR,at:now()}));
+  p.updatedAt=now();saveProducts();
+  renderProductList();renderProductDetail();
+  toast('已保存');
 }
-function confirmField(k){
-  const p=pById(curPid), f=p.fields[k];
-  f.src='human';audit.push({obj:p.short,op:'确认 AI 提取字段 · '+k,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});
-  refreshAll();
+function setAttr(key,value){
+  const p=pById(curPid),f=p.fields[key];if(!f)return;
+  const old=f.v;const v=value.trim();
+  if(v===old&&f.src==='human')return;
+  f.v=v;f.src=v?'human':'missing';
+  audit.push({obj:p.short||p.name,op:'修改字段 · '+key,from:old||'（空）',to:v||'（空）',who:OPERATOR,at:now()});
+  p.updatedAt=now();saveProducts();
+  renderProductList();renderProductDetail();
+}
+function confirmAttr(key){
+  const p=pById(curPid),f=p.fields[key];if(!f)return;
+  f.src='human';
+  audit.push({obj:p.short||p.name,op:'确认字段 · '+key,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});
+  p.updatedAt=now();saveProducts();
+  renderProductList();renderProductDetail();
+}
+function confirmAllAttrs(){
+  const p=pById(curPid);
+  let n=0;
+  Object.entries(p.fields).forEach(([k,f])=>{
+    if(f.src==='ai'&&fieldScope(p,k)!=='generate'&&f.v){f.src='human';n++;
+      audit.push({obj:p.short||p.name,op:'批量确认字段 · '+k,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});}
+  });
+  if(!n){toast('没有可批量确认的字段（高敏字段需逐项确认）');return;}
+  p.updatedAt=now();saveProducts();renderProductList();renderProductDetail();toast(`已确认 ${n} 个字段`);
+}
+function setSku(id,key,value){
+  const p=pById(curPid),s=p.skus.find(x=>x.id===id);if(!s)return;
+  const old=s[key];
+  s[key]=key==='price'?Math.max(0,parseFloat(value)||0):value.trim();
+  audit.push({obj:p.short||p.name,op:'修改 SKU · '+s.color+' '+s.spec+' · '+key,from:String(old),to:String(s[key]),who:OPERATOR,at:now()});
+  p.updatedAt=now();saveProducts();renderProductList();
+}
+function addSku(){
+  const p=pById(curPid);
+  p.skus.push({id:'s_'+Date.now(),color:'新颜色',spec:'新规格',price:p.skus[0]?p.skus[0].price:0});
+  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+}
+function delSku(id){
+  const p=pById(curPid);
+  if(!confirm('删除这个 SKU？'))return;
+  p.skus=p.skus.filter(s=>s.id!==id);
+  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+}
+function genMatrix(){
+  const p=pById(curPid);
+  const colors=($('mx-colors').value||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  const specs=($('mx-specs').value||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  if(!colors.length||!specs.length){toast('颜色和规格都要填');return;}
+  const price=p.skus[0]?p.skus[0].price:0;
+  let n=0;
+  colors.forEach(c=>specs.forEach(sp=>{
+    if(p.skus.some(s=>s.color===c&&s.spec===sp))return;
+    p.skus.push({id:'s_'+Date.now()+'_'+n,color:c,spec:sp,price});n++;
+  }));
+  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+  toast(n?`新增 ${n} 个 SKU`:'组合都已存在');
+  if(n)audit.push({obj:p.short||p.name,op:'矩阵生成 SKU',from:'—',to:`新增 ${n} 个`,who:OPERATOR,at:now()});
+}
+function applyBatchPrice(){
+  const p=pById(curPid);
+  const mode=$('bp-mode').value,val=parseFloat($('bp-value').value);
+  if(!Number.isFinite(val)){toast('请填写数值');return;}
+  p.skus.forEach(s=>{
+    if(mode==='set')s.price=Math.max(0,val);
+    else if(mode==='inc')s.price=Math.max(0,+(s.price+val).toFixed(2));
+    else if(mode==='pct')s.price=Math.max(0,+(s.price*(1+val/100)).toFixed(2));
+  });
+  audit.push({obj:p.short||p.name,op:'批量改价',from:'—',to:`${mode} ${val}`,who:OPERATOR,at:now()});
+  p.updatedAt=now();saveProducts();closeModal('price-batch-modal');renderProductDetail();renderProductList();
+  toast('已批量改价（价格改动需二次确认，原型已留痕）');
 }
 
 /* ============ 新建商品弹窗 ============ */
@@ -1174,7 +1484,6 @@ function renderNewProductFields(){
       ${d.src==='ai'?`<span class="src-tag ai">AI 提取 · 待确认</span><button type="button" class="btn btn-soft btn-sm" data-ok="${f}">确认</button>`:d.src==='human'?SRC_TAG.human:'<span class="pill gray">待填</span>'}</li>`;
   }).join('');
 }
-/* 人工输入即视为人工录入；AI 提取的值必须点「确认」 */
 $('pm-fields').addEventListener('change',e=>{const f=e.target.dataset.f;if(!f)return;const v=e.target.value.trim();draft[f]={v,src:v?'human':'missing'};renderNewProductFields();});
 $('pm-fields').addEventListener('click',e=>{const f=e.target.dataset.ok;if(!f)return;draft[f].src='human';renderNewProductFields();});
 function aiExtract(){
@@ -1187,13 +1496,14 @@ function saveNewProduct(){
   const name=$('pm-name').value.trim(), cat=$('pm-cat').value, err=$('pm-error');
   if(!name){err.textContent='请填写商品名称';err.hidden=false;$('pm-name').focus();return;}
   const fields={};CATS[cat].fields.forEach(f=>fields[f]=draft[f]&&draft[f].v?{...draft[f]}:{v:'',src:'missing'});
-  const id='p'+(products.length+1);
-  products.push({id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),affected:0,fields,skus:[]});
+  const id='p_'+Date.now();
+  products.push({id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),
+    affected:0,fields,skus:[],source:'manual',updatedAt:now()});
   saveProducts();
   audit.push({obj:name,op:'新建商品主档',from:'—',to:CATS[cat].name,who:OPERATOR,at:now()});
   closeModal('product-modal');
   $('pm-name').value='';$('pm-pitch').value='';err.hidden=true;draft={};renderNewProductFields();
-  showProduct(id);refreshAll();go('products');
+  go('products');openProduct(id);renderProductList();
   const pend=Object.values(fields).filter(f=>f.src!=='human').length;
   toast(pend?`已保存，${pend} 个必填字段待补 / 待确认`:'已保存');
 }
@@ -1253,17 +1563,17 @@ function importParsedProduct(){
     fields[f]=hit?{v:String(hit[1]),src:'ai'}:{v:'',src:'missing'};
   });
   const price=parseFloat($('lk-price').value);
-  const id='p'+(products.length+1);
+  const id='p_'+Date.now();
   products.push({
     id,name,short:name.split(/\s+/).pop(),cat,
     pitch:$('lk-desc').value.trim(),affected:0,fields,
-    skus:Number.isFinite(price)?[{id:'s'+Date.now(),color:'默认',spec:'默认',price}]:[],
-    source:'link',sourceUrl:parsedLink.url,
+    skus:Number.isFinite(price)?[{id:'s_'+Date.now(),color:'默认',spec:'默认',price}]:[],
+    source:'link',sourceUrl:parsedLink.url,updatedAt:now(),
   });
   saveProducts();
   audit.push({obj:name,op:'链接导入商品',from:parsedLink.url,to:CATS[cat].name,who:OPERATOR,at:now()});
   closeModal('link-modal');
-  showProduct(id);refreshAll();go('products');
+  go('products');openProduct(id);renderProductList();
   const pend=Object.values(fields).filter(f=>f.src!=='human').length;
   toast(`已录入，${pend} 个字段待确认`);
 }
@@ -1286,8 +1596,8 @@ function setStudioStep(n){
 }
 function enterStudio(pid){studioPid=pid;sceneSel=0;setStudioStep(0);go('studio');}
 function blockNotice(p){
-  const pend=Object.entries(p.fields).filter(([,f])=>f.src!=='human').map(([k])=>k);
-  return `<div class="notice red">「${esc(p.name)}」档案未完整：${pend.join('、')} 待补或待确认，生成已阻断。
+  const pend=Object.entries(p.fields).filter(([k,f])=>f.src!=='human'&&fieldScope(p,k)==='generate').map(([k])=>k);
+  return `<div class="notice red">「${esc(p.name)}」档案缺少阻断生成字段：${pend.join('、')} 待补或待确认，生成已阻断。
     <button type="button" class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="showProduct('${p.id}');go('products')">去补档案</button></div>`;
 }
 /* 生成后按品类弹出的人工检查清单 */
@@ -2153,7 +2463,11 @@ studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
 refreshSidebarModels();
 const __hash=(location.hash||'').replace('#','');
-if(__hash&&TITLES[__hash])go(__hash);
+if(__hash){
+  const [__pg,__arg,__tab]=__hash.split('/');
+  if(TITLES[__pg])go(__pg);
+  if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
+}
 </script>
 </body>
 </html>
