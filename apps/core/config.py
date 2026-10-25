@@ -44,6 +44,10 @@ class Settings(BaseSettings):
 
     # 单次生成的整体超时（秒）
     request_timeout_s: float = 180.0
+    # 独立的 OpenAI-compatible text model; never infer planner capabilities from image models.
+    planner_base_url: str = ""
+    planner_api_key: str = ""
+    planner_model: str = ""
 
     log_level: str = "INFO"
 

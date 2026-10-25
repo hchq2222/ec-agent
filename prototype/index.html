@@ -372,6 +372,30 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   .kpis{grid-template-columns:1fr 1fr}
   .scene-grid{grid-template-columns:repeat(2,1fr)}
 }
+.project-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start}
+.project-stack{display:grid;gap:16px}
+.project-list-btn{width:100%;display:block;text-align:left;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;color:var(--text)}
+.project-list-btn.active{border-color:var(--brand);background:var(--brand-soft)}
+.project-list-btn small{display:block;color:var(--muted);margin-top:4px}
+.project-task{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:#fff}
+.project-task.active{border-color:var(--brand);background:#fbfdfb}
+.project-task-head{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.project-editor{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.project-editor label{font-size:12px;color:var(--muted)}
+.project-editor .wide{grid-column:1/-1}
+.project-flow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:12px 0}
+.project-flow .step{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-size:12px}
+.project-flow .step.done{border-color:#8fc5a4;background:#eaf6ed;color:#176237}
+.project-flow .step.active{border-color:var(--brand);background:var(--brand-soft);font-weight:700}
+.project-preview{height:250px;border-radius:10px;overflow:hidden;background:#f2f5f4;display:grid;place-items:center;position:relative;margin:10px 0}
+.project-preview>img{width:100%;height:100%;object-fit:contain}
+.project-preview>.demo-subject{width:150px;height:210px;z-index:1}
+.project-preview .demo-label{position:absolute;right:10px;bottom:10px;padding:4px 7px;border-radius:4px;background:#1d2330;color:white;font-size:11px;z-index:2}
+.project-flow-editor{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 2px}
+.project-flow-editor label{font-size:12px;color:var(--text);display:inline-flex;align-items:center;gap:5px}
+.project-flow-editor input{accent-color:var(--brand)}
+.project-flow .step button{margin-left:6px;color:var(--brand-ink);font-size:12px}
+@media(max-width:920px){.project-layout{grid-template-columns:1fr}.project-editor{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -390,6 +414,9 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <div class="nav-group">制作链路</div>
       <button class="nav-item" data-page="products">
         <span class="ico">▤</span><span>商品档案</span><span class="tag">M1·M2</span>
+      </button>
+      <button class="nav-item" data-page="projects">
+        <span class="ico">◇</span><span>项目 · AI 工作流</span><span class="tag">原型</span>
       </button>
       <button class="nav-item" data-page="genstudio">
         <span class="ico">◫</span><span>生图工作台</span><span class="tag">AI</span>
@@ -509,11 +536,25 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
             </div>
             <div class="flex">
               <span class="pill" id="pd-status"></span>
+              <button class="btn btn-ghost" onclick="openProjectFromProduct(curPid)">创建项目</button>
               <button class="btn btn-primary" id="pd-enter" onclick="enterStudio(curPid)">进入制作</button>
             </div>
           </div>
           <div class="pd-tabs" id="pd-tabs"></div>
           <div id="pd-body"></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: PROJECTS ============ -->
+      <section class="page" id="page-projects">
+        <div class="page-head">
+          <div><h1>项目 · AI 生图任务<span class="badge">交互原型</span></h1><p>选商品 → 建议交付图 → 人工确认 → 逐项制作与精修。此页只演示交互，不调用或计费模型。</p></div>
+          <button class="btn btn-primary" onclick="projectCreateFromSelector()">＋ 创建项目</button>
+        </div>
+        <div class="notice blue">优先保留真实商品像素；商品事实只取人工确认的档案字段。流程与图片均为原型示意，不代表已真实生成或通过审核。</div>
+        <div class="project-layout">
+          <div class="card"><div class="card-h"><h3>项目</h3><span class="pill gray" id="project-count">0</span></div><div class="card-b"><label class="small muted" for="project-product-select">选择商品</label><select class="select" id="project-product-select" style="width:100%;margin:7px 0 12px"></select><div id="project-list"></div></div></div>
+          <div id="project-workspace"></div>
         </div>
       </section>
 
@@ -1012,6 +1053,75 @@ try{
   saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
 }catch(e){}
 const pById=id=>products.find(p=>p.id===id);
+/* 项目页仅为交互原型：数据存在本浏览器，不向模型发请求。 */
+const projectPrototypes=(()=>{try{return JSON.parse(localStorage.getItem('proto.projects')||'[]').filter(x=>x&&x.id&&x.productId);}catch(e){return [];}})();
+let projectId=projectPrototypes[0]?.id||'',projectTaskId=projectPrototypes[0]?.tasks?.[0]?.id||'';
+const PROJECT_USAGE={scene:'场景图',main:'商品主图',detail:'细节图'};
+const PROJECT_STEP_LABEL={source:'商家原图',generate:'生成候选',refine:'精修',quality:'质检',review:'人工审核',deliver:'交付'};
+const projectSteps=t=>t.workflow||['source','generate','refine','review','deliver'];
+function projectSave(){try{localStorage.setItem('proto.projects',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
+function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
+function projectTask(){return projectCurrent()?.tasks.find(x=>x.id===projectTaskId)||null;}
+function projectCreateFromSelector(){
+  const product=pById($('project-product-select')?.value);if(!product){toast('请先选择商品');return;}
+  const existing=projectPrototypes.find(x=>x.productId===product.id);
+  if(existing){projectId=existing.id;projectTaskId=existing.tasks[0]?.id||'';renderProjects();toast('已打开该商品的项目');return;}
+  const item={id:'proj_'+Date.now(),productId:product.id,name:product.name+' · 视觉项目',status:'未规划',tasks:[]};
+  projectPrototypes.unshift(item);projectId=item.id;projectTaskId='';projectSave();renderProjects();toast('项目已创建，可生成建议清单');
+}
+function projectOpen(id){projectId=id;projectTaskId=projectCurrent()?.tasks[0]?.id||'';renderProjects();}
+function projectSuggest(){
+  const project=projectCurrent(),product=pById(project?.productId);if(!product)return;
+  if(project.status==='已确认'){toast('清单已确认，当前原型不支持修改已确认任务');return;}
+  if(project.tasks.length&&!confirm('重新生成会覆盖当前未确认的任务清单，继续吗？'))return;
+  const confirmed=Object.entries(product.fields||{}).filter(([,f])=>f.src==='human'&&f.v).map(([k,f])=>k+' '+f.v);
+  if(!confirmed.length){toast('请先在商品档案确认至少一条事实');return;}
+  const scenes=(CATS[product.cat]?.scenes||[]).filter(([key])=>key!=='white');
+  const usageRows=[['main','主图','展示真实商品与已确认的规格'],['scene','场景图','在适用品类场景中展示商品'],['detail','细节图','突出真实结构与包装细节']];
+  project.tasks=product.skus.flatMap((sku)=>usageRows.map(([usage,label,reason],idx)=>({
+    id:'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),skuId:sku.id,usage,title:sku.color+' '+sku.spec+' · '+label,reason,
+    prompt:`保留商家原图中的真实商品，${reason}；仅使用已确认事实：${confirmed.join('；')}。不改商品颜色、结构、Logo 与包装文字。`,
+    scene:usage==='main'?'white':scenes[idx%Math.max(1,scenes.length)]?.[0]||'white',status:'待确认',step:0,refined:false,
+    workflow:['source','generate','refine','quality','review','deliver']
+  })));
+  project.status='待确认';projectTaskId=project.tasks[0]?.id||'';projectSave();renderProjects();toast('已生成规则示意清单，请人工检查并确认');
+}
+function projectAddTask(){const pr=projectCurrent(),p=pById(pr?.productId);if(!p||pr.status==='已确认')return;const sku=p.skus[0];const t={id:'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),skuId:sku.id,usage:'scene',title:'新增场景图',reason:'补充商品展示',prompt:'保留商家原图中的真实商品，仅调整背景。',scene:CATS[p.cat].scenes.find(s=>s[0]!=='white')?.[0]||'white',status:'待确认',step:0,refined:false,workflow:['source','generate','refine','quality','review','deliver']};pr.tasks.push(t);projectTaskId=t.id;pr.status='待确认';projectSave();renderProjects();}
+function projectDeleteTask(){const pr=projectCurrent();if(!pr||pr.status==='已确认'||pr.tasks.length<=1){toast('至少保留一项，且已确认清单不可删除');return;}pr.tasks=pr.tasks.filter(t=>t.id!==projectTaskId);projectTaskId=pr.tasks[0].id;projectSave();renderProjects();}
+function projectEditTask(key,value){const pr=projectCurrent(),t=projectTask();if(!t||pr.status==='已确认')return;t[key]=value;projectSave();if(key==='skuId'||key==='usage'||key==='scene')renderProjects();}
+function projectToggleStep(key,enabled){const pr=projectCurrent(),t=projectTask();if(!t||pr?.status==='已确认'||!['refine','quality'].includes(key))return;const steps=projectSteps(t).filter(x=>x!==key);if(enabled)steps.splice(steps.indexOf('review'),0,key);t.workflow=steps;projectSave();renderProjects();}
+function projectMoveStep(key,direction){const pr=projectCurrent(),t=projectTask();if(!t||pr?.status==='已确认'||!['refine','quality'].includes(key))return;const steps=[...projectSteps(t)],at=steps.indexOf(key),to=at+direction;if(at<0||!['refine','quality'].includes(steps[to]))return;[steps[at],steps[to]]=[steps[to],steps[at]];t.workflow=steps;projectSave();renderProjects();}
+function projectSelectTask(id){projectTaskId=id;renderProjects();}
+function projectConfirm(){const pr=projectCurrent(),p=pById(pr?.productId);if(!pr||!p||!pr.tasks.length)return;const ids=new Set(p.skus.map(x=>x.id));if(pr.tasks.some(t=>!ids.has(t.skuId)||!t.title.trim()||!t.prompt.trim())){toast('检查 SKU、标题和画面描述后再确认');return;}pr.status='已确认';pr.tasks.forEach(t=>t.status='待制作');projectSave();renderProjects();toast('清单已确认，可逐项制作');}
+function projectNextStep(){const pr=projectCurrent(),t=projectTask();if(!t||pr?.status!=='已确认'||t.step>=projectSteps(t).length-1)return;t.step++;const key=projectSteps(t)[t.step];t.status={generate:'示意候选',refine:'待精修',quality:'待质检',review:'待人工审核',deliver:'已交付'}[key];projectSave();renderProjects();toast(key==='generate'?'已展示示意候选（未调用模型）':'进度已更新（原型示意）');}
+function projectRefine(){const t=projectTask();if(!t||projectCurrent()?.status!=='已确认'||!projectSteps(t).includes('refine')||t.step<projectSteps(t).indexOf('refine')||t.step>=projectSteps(t).indexOf('review'))return;t.refined=!t.refined;projectSave();renderProjects();toast(t.refined?'已标记精修示意，商品仍保持原貌':'已取消精修示意');}
+function renderProjects(){
+  const sel=$('project-product-select'),list=$('project-list'),work=$('project-workspace');if(!sel||!list||!work)return;
+  const prev=sel.value;sel.innerHTML=products.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${p.skus.length} SKU</option>`).join('');if(pById(prev))sel.value=prev;else if(pById(projectCurrent()?.productId))sel.value=projectCurrent().productId;
+  $('project-count').textContent=projectPrototypes.length+' 个';
+  list.innerHTML=projectPrototypes.length?projectPrototypes.map(pr=>`<button type="button" class="project-list-btn ${pr.id===projectId?'active':''}" onclick="projectOpen('${pr.id}')"><b>${esc(pr.name)}</b><small>${pr.tasks.length} 项 · ${esc(pr.status)}</small></button>`).join(''):'<p class="small muted">还没有项目。选定商品后点击“创建项目”。</p>';
+  const pr=projectCurrent(),p=pById(pr?.productId);if(!pr||!p){work.innerHTML='<div class="card"><div class="card-b">选择商品并创建项目，开始规划一套电商图片任务。</div></div>';return;}
+  if(pr.tasks.length&&!pr.tasks.some(t=>t.id===projectTaskId))projectTaskId=pr.tasks[0].id;
+  const task=projectTask(),cat=CATS[p.cat]||CATS.home,sku=p.skus.find(s=>s.id===task?.skuId)||p.skus[0];
+  const facts=Object.entries(p.fields||{}).filter(([,f])=>f.src==='human'&&f.v).map(([k,f])=>`<span class="pill gray">${esc(k)}：${esc(f.v)}</span>`).join(' ');
+  const taskRows=pr.tasks.map(t=>`<div class="project-task ${t.id===projectTaskId?'active':''}"><div class="project-task-head"><button type="button" onclick="projectSelectTask('${t.id}')"><b>${esc(t.title)}</b></button><span class="pill ${t.status==='已交付'?'green':'gray'}">${esc(t.status)}</span></div><div class="small muted">${esc(t.skuId)} · ${PROJECT_USAGE[t.usage]||'图片'} · ${esc(t.reason)}</div></div>`).join('');
+  const scenes=[...cat.scenes];
+  const preview=p.images?.[0]&&task?.step===0?`<img src="${esc(p.images[0])}" alt="商家上传的原图">`:task?.step>0?`${compositeSVG(task.usage==='main'?'white':task.scene||'white',cat.subject)}<span class="demo-label">${task.refined?'精修示意':'场景示意'}</span>`:`<div class="demo-subject">${productSVG(cat.subject,'raw')}</div><span class="demo-label">商品示意图</span>`;
+  const steps=task?projectSteps(task):[];
+  const flowEditor=task&&pr.status!=='已确认'?`<div class="project-flow-editor"><span class="small muted">流程示意（仅精修与质检可调整）：</span>${['refine','quality'].map(k=>`<label><input type="checkbox" ${steps.includes(k)?'checked':''} onchange="projectToggleStep('${k}',this.checked)">${PROJECT_STEP_LABEL[k]}</label>`).join('')}</div>`:'';
+  const flow=steps.map((key,i)=>`${i?'<span class="muted">→</span>':''}<span class="step ${task.step>i?'done':task.step===i?'active':''}">${PROJECT_STEP_LABEL[key]}${pr.status!=='已确认'&&['refine','quality'].includes(key)&&['refine','quality'].includes(steps[i-1])?`<button type="button" title="前移" onclick="projectMoveStep('${key}',-1)">↑</button>`:''}</span>`).join('');
+  const nextKey=task?steps[task.step+1]:null;
+  work.innerHTML=`<div class="project-stack"><div class="card"><div class="card-h"><h3>${esc(pr.name)}</h3><span class="pill ${pr.status==='已确认'?'green':'amber'}">${esc(pr.status)}</span></div><div class="card-b"><p class="small muted">${esc(cat.name)} · ${p.skus.length} 个 SKU · 来源：商品档案</p><div class="flex" style="gap:6px;flex-wrap:wrap;margin:10px 0">${facts||'<span class="pill amber">尚无人工确认事实</span>'}</div><button class="btn btn-soft" onclick="projectSuggest()" ${pr.status==='已确认'?'disabled':''}>${pr.tasks.length?'重新生成建议':'生成建议清单'}</button><span class="small muted" style="margin-left:8px">本原型用规则示意 AI 建议，不调用模型</span></div></div>
+  <div class="card"><div class="card-h"><h3>交付任务清单</h3><span class="pill gray">${pr.tasks.length} 项</span></div><div class="card-b">${taskRows||'<p class="small muted">点击“生成建议清单”查看主图、场景图和细节图建议。</p>'}${pr.tasks.length&&pr.status!=='已确认'?`<div class="flex" style="margin-top:12px;gap:8px"><button class="btn btn-ghost btn-sm" onclick="projectAddTask()">＋ 增加一项</button><button class="btn btn-primary btn-sm" onclick="projectConfirm()">人工确认清单</button></div>`:''}</div></div>
+  ${task?`<div class="card"><div class="card-h"><h3>当前任务 · ${esc(task.title)}</h3><span class="sub">先确认清单，再逐项制作</span></div><div class="card-b">${pr.status!=='已确认'?`<div class="project-editor"><label>目标 SKU<select class="select" style="width:100%" onchange="projectEditTask('skuId',this.value)">${p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===task.skuId?'selected':''}>${esc(s.color+' '+s.spec)}</option>`).join('')}</select></label><label>图片用途<select class="select" style="width:100%" onchange="projectEditTask('usage',this.value)">${Object.entries(PROJECT_USAGE).map(([k,v])=>`<option value="${k}" ${k===task.usage?'selected':''}>${v}</option>`).join('')}</select></label><label>场景<select class="select" style="width:100%" onchange="projectEditTask('scene',this.value)">${scenes.map(([k,v])=>`<option value="${k}" ${k===task.scene?'selected':''}>${v}</option>`).join('')}</select></label><label>标题<input class="input" style="width:100%" value="${esc(task.title)}" onchange="projectEditTask('title',this.value)"></label><label class="wide">画面描述<textarea class="input" style="width:100%;min-height:78px" onchange="projectEditTask('prompt',this.value)">${esc(task.prompt)}</textarea></label></div><button class="btn btn-ghost btn-sm" onclick="projectDeleteTask()">删除这一项</button>`:`<p class="small muted">${esc(task.prompt)}</p>`}${flowEditor}<div class="project-flow">${flow}</div><div class="project-preview">${preview}</div><p class="small muted">${task.step===0?'仅使用商家确认的事实；示意图不代表真实商品图。':`当前 SKU：${esc(sku?.color||'')} ${esc(sku?.spec||'')}。结果仅为原型示意，需真实生成和审核。`}</p>${pr.status==='已确认'?`<div class="flex" style="gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="projectNextStep()" ${!nextKey?'disabled':''}>${nextKey?(nextKey==='generate'?'生成候选（示意）':'进入'+PROJECT_STEP_LABEL[nextKey]):'已完成'}</button>${steps.includes('refine')&&task.step>=steps.indexOf('refine')&&task.step<steps.indexOf('review')?`<button class="btn btn-ghost" onclick="projectRefine()">${task.refined?'取消精修示意':'标记精修示意'}</button>`:''}</div>`:''}</div></div>`:''}</div>`;
+}
+function openProjectFromProduct(pid){
+  const p=pById(pid);if(!p)return;
+  go('projects');
+  const select=$('project-product-select');
+  if(select)select.value=p.id;
+  projectCreateFromSelector();
+}
 const FIELD_SCOPE={
   beauty:{'容量':'generate','成分':'generate','适用说明':'generate','包装多角度图':'delivery'},
   home:{'尺寸':'generate','材质':'generate','颜色':'delivery','安装方式':'generate'},
@@ -1175,7 +1285,7 @@ const checker='background-color:#fff;background-image:conic-gradient(#e5e7eb 25%
 const pitchTag=p=>{const s=p.pitch.split(/[，。,]/).filter(Boolean);return(s[2]||s[1]||s[0]||'').slice(0,6);};
 
 /* ============ 导航 ============ */
-const TITLES={overview:'工作台总览',products:'商品档案',studio:'制作台',genstudio:'生图工作台',canvas:'画布编辑器',tasks:'任务中心',assets:'素材库 / 交付',settings:'设置'};
+const TITLES={overview:'工作台总览',products:'商品档案',projects:'项目 · AI 工作流',studio:'制作台',genstudio:'生图工作台',canvas:'画布编辑器',tasks:'任务中心',assets:'素材库 / 交付',settings:'设置'};
 $('nav').addEventListener('click',e=>{const b=e.target.closest('.nav-item');if(b)go(b.dataset.page);});
 function go(page){
   document.querySelectorAll('.nav-item').forEach(b=>{const on=b.dataset.page===page;b.classList.toggle('active',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');});
@@ -1183,6 +1293,7 @@ function go(page){
   $('crumb-title').textContent=TITLES[page];
   document.querySelector('.content').scrollTop=0;
   if(page==='genstudio')gsOnOpen();
+  if(page==='projects')renderProjects();
   if(page==='studio'||page==='canvas')gsLoadRecent();
   if(page==='settings')renderSettings();
 }
@@ -2922,7 +3033,7 @@ function gsBindDrop(){
 /* ============ 刷新与初始化 ============ */
 function refreshAll(){
   renderKPIs();renderOverviewProducts();renderProductList();renderProductDetail();
-  renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderSettings();renderChannels();
+  renderProjects();renderStudio();renderCanvas();renderTasks();renderVersions();renderAudit();renderExport();renderSettings();renderChannels();
 }
 document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
 studioChannelId=(activeChannel()||{}).id||null;
@@ -2936,6 +3047,7 @@ if(__hash){
   if(__pg==='products'&&__arg==='new'){openProductModal();}
   else if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
   else if(__pg==='tasks'&&__arg==='batch'){openBatch();}
+  else if(__pg==='projects'&&__arg&&projectPrototypes.some(p=>p.id===__arg)){projectOpen(__arg);}
   else if(__pg==='settings'&&__arg&&SETTINGS_TABS.some(t=>t.key===__arg)){settingsTab=__arg;renderSettings();}
 }
 </script>

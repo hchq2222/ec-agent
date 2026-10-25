@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
@@ -454,6 +456,12 @@ async def parse_link(payload: ParseLinkRequest) -> Any:
 
 @app.post("/api/images/generate", response_model=GenerateImageResponse)
 async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse:
+    return await _generate_image(payload)
+
+
+async def _generate_image(
+    payload: GenerateImageRequest, workflow_trace: dict[str, str] | None = None
+) -> GenerateImageResponse:
     assert registry is not None and storage is not None
     settings = get_settings()
 
@@ -488,6 +496,8 @@ async def generate_image(payload: GenerateImageRequest) -> GenerateImageResponse
         "images_count": len(payload.images),
         "user": payload.user,
     }
+    if workflow_trace:
+        params["workflow_trace"] = workflow_trace
 
     # 1) 先记 running，失败也能留下痕迹
     if db is not None:
@@ -651,10 +661,25 @@ async def _mark_failed(job_id: uuid.UUID, spec: Any, exc: ProviderError) -> None
         log.exception("job %s 失败记录落库失败", job_id)
 
 
+class ProjectStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
 def mount_static() -> None:
+    # Windows MIME registry can label .js as text/plain; browsers reject module scripts.
+    mimetypes.add_type("text/javascript", ".js", strict=True)
+    mimetypes.add_type("text/css", ".css", strict=True)
     settings = get_settings()
     settings.output_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/files", StaticFiles(directory=str(settings.output_dir)), name="files")
+    project_ui = Path(__file__).resolve().parent / "static" / "project-ui"
+    app.mount("/project-ui", ProjectStaticFiles(directory=str(project_ui), html=True, check_dir=False), name="project-ui")
 
 
 mount_static()
+
+from .projects import router as projects_router  # noqa: E402
+app.include_router(projects_router)

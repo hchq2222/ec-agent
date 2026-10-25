@@ -134,3 +134,64 @@ class ProviderCall(Base):
     status: Mapped[str] = mapped_column(String(16), default="succeeded", nullable=False)
     usage: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class Project(Base):
+    """One product and its selected SKUs. Snapshot until product tables are live."""
+
+    __tablename__ = "project"
+    __table_args__ = (Index("ix_project_product", "product_ref"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    product_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    product_snapshot: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="draft", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class ProjectPlan(Base):
+    __tablename__ = "project_plan"
+    __table_args__ = (Index("ix_project_plan_project", "project_id", "version"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("app.project.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="draft", nullable=False)
+    items: Mapped[list] = mapped_column(JSONType, nullable=False)
+    usage: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkflowRun(Base):
+    __tablename__ = "workflow_run"
+    __table_args__ = (Index("ix_workflow_run_plan", "plan_id"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("app.project.id"), nullable=False)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("app.project_plan.id"), nullable=False)
+    sku_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    item_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    graph: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    cursor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    context: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class WorkflowStep(Base):
+    __tablename__ = "workflow_step"
+    __table_args__ = (Index("ix_workflow_step_run", "run_id"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("app.workflow_run.id"), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    result: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
