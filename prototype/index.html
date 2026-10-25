@@ -913,13 +913,13 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
     <div class="modal-b">
       <div class="field"><label>商品 / SKU 清单</label><ul class="checklist" id="bm-skus"></ul></div>
       <div class="row cols-2">
-        <div class="field"><label for="bm-tpl">模板</label><select class="select" id="bm-tpl" onchange="renderBatchEstimate()"></select></div>
+        <div class="field"><label for="bm-tpl">交付清单（示例）</label><select class="select" id="bm-tpl" onchange="renderBatchEstimate()"></select></div>
         <div class="field"><label for="bm-ch">目标渠道</label><select class="select" id="bm-ch"><option>淘宝 + 抖音 + Amazon</option><option>仅淘宝</option></select></div>
       </div>
       <div class="notice red" id="bm-block" hidden></div>
       <hr class="hr">
       <div class="flex" style="justify-content:space-between" id="bm-estimate"></div>
-      <p class="small muted" style="margin-top:8px">估算按模板单价计；执行中的重试会计入实际费，任务中心分开显示。</p>
+      <p class="small muted" style="margin-top:8px">正式版按「用途 + 数量」自由勾选，不预设 8 位；当前用示例清单估算。执行中的重试会计入实际费，任务中心分开显示。</p>
     </div>
     <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('batch-modal')">取消</button><button class="btn btn-primary" id="bm-submit" onclick="submitBatch()">确认提交</button></div>
   </div>
@@ -1026,26 +1026,26 @@ function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid
 
 /* 任务按「SKU × 产出」逐项记录状态与费用；失败 / 取消项不计实际费，重试成功才计 */
 const TEMPLATES={
-  full:{name:'全套 · 8 图 + 15s 视频',outs:[['8 图',4.2],['15s 视频',5.0]]},
-  img8:{name:'8 图（主图 3 + 场景 5）',outs:[['8 图',4.2]]},
+  full:{name:'全套 · 自选 8 项 + 15s 视频',outs:[['图片 8 项',4.2],['15s 视频',5.0]]},
+  img8:{name:'自选 8 项（示例：主图 3 + 场景 5）',outs:[['图片 8 项',4.2]]},
   main3:{name:'仅主图 3 张',outs:[['主图 3 张',1.6]]},
 };
 const jobs=[
   {id:'J-1021-01',name:'森序洁面乳 · 全套',created:'10-21 09:10',items:[
-    {sku:'s11',out:'8 图',status:'成功',est:4.2,act:4.6},
+    {sku:'s11',out:'图片 8 项',status:'成功',est:4.2,act:4.6},
     {sku:'s11',out:'15s 视频',status:'成功',est:5.0,act:6.2},
-    {sku:'s12',out:'8 图',status:'成功',est:4.2,act:4.4},
+    {sku:'s12',out:'图片 8 项',status:'成功',est:4.2,act:4.4},
     {sku:'s12',out:'15s 视频',status:'成功',est:5.0,act:5.4},
-    {sku:'s13',out:'8 图',status:'执行中',est:4.2,act:0},
+    {sku:'s13',out:'图片 8 项',status:'执行中',est:4.2,act:0},
     {sku:'s13',out:'15s 视频',status:'等待',est:5.0,act:0}]},
   {id:'J-1021-02',name:'森序洁面乳 · 场景图重做（换植物背景）',created:'10-21 10:20',items:[
     {sku:'s11',out:'场景图 2 张',status:'成功',est:1.0,act:1.0},
     {sku:'s12',out:'场景图 2 张',status:'已取消',est:1.0,act:0}]},
-  {id:'J-1021-03',name:'云柔四件套 · 8 图',created:'10-21 11:02',items:[
-    {sku:'s21',out:'8 图',status:'成功',est:4.2,act:4.2},
-    {sku:'s22',out:'8 图',status:'成功',est:4.2,act:4.3}]},
+  {id:'J-1021-03',name:'云柔四件套 · 自选 8 项',created:'10-21 11:02',items:[
+    {sku:'s21',out:'图片 8 项',status:'成功',est:4.2,act:4.2},
+    {sku:'s22',out:'图片 8 项',status:'成功',est:4.2,act:4.3}]},
   {id:'J-1021-04',name:'快充线 · 全套',created:'10-21 13:40',items:[
-    {sku:'s31',out:'8 图',status:'失败',est:4.2,act:0,err:'一致性校验打回：接口孔位 OCR 比对不通过'},
+    {sku:'s31',out:'图片 8 项',status:'失败',est:4.2,act:0,err:'一致性校验打回：接口孔位 OCR 比对不通过'},
     {sku:'s31',out:'15s 视频',status:'等待',est:5.0,act:0}]},
 ];
 const ACTIVE=['执行中','等待'];
@@ -1156,7 +1156,7 @@ function skuCostRows(){
     const r=m[it.sku]||(m[it.sku]={est:0,act:0,outs:{}});
     r.est+=it.est;r.act+=it.act;r.outs[it.out]=it.status;
   }));
-  return Object.entries(m).map(([sku,r])=>[sku,{...r,full:r.outs['8 图']==='成功'&&r.outs['15s 视频']==='成功'}]);
+  return Object.entries(m).map(([sku,r])=>[sku,{...r,full:r.outs['图片 8 项']==='成功'&&r.outs['15s 视频']==='成功'}]);
 }
 function renderKPIs(){
   const full=skuCostRows().filter(([,r])=>r.full);
@@ -2051,7 +2051,7 @@ function renderTasks(){
   $('cost-table').innerHTML=`<thead><tr><th>SKU</th><th>产出</th><th>估算费</th><th>实际费</th><th>全套完成</th></tr></thead><tbody>
     ${rows.map(([sid,r])=>`<tr><td>${esc(skuInfo(sid).label)}</td><td class="small">${Object.entries(r.outs).map(([o,s])=>`${o} <span class="pill ${ST_CLS[s]}">${s}</span>`).join(' ')}</td>
       <td class="mono">${yuan(r.est)}</td><td class="mono"><b>${yuan(r.act)}</b></td><td>${r.full?'<span class="pill green">是 · 计入 H2</span>':'<span class="pill gray">否</span>'}</td></tr>`).join('')}
-    <tr style="background:#fafafa"><td colspan="5" class="small">H2 = 已完成「8 图 + 15s 视频」的 SKU 实际费均值（含返工与重试）：
+    <tr style="background:#fafafa"><td colspan="5" class="small">H2 = 已完成「自选清单 + 15s 视频」的 SKU 实际费均值（含返工与重试）：
       ${full.length?`<b>${yuan(avgOf(full,'act'))}</b>（${full.length} 个 SKU，估算均值 ${yuan(avgOf(full,'est'))}）${avgOf(full,'act')<=15?' ≤ ¥15 ✓':' > ¥15 ✕'}`:'暂无'}</td></tr></tbody>`;
 }
 /* 重试只重跑失败项，已成功项不重复执行、不重复扣费 */
@@ -2133,7 +2133,7 @@ function renderExport(){
   const ok=products.filter(p=>jobs.some(j=>j.items.some(i=>i.status==='成功'&&skuInfo(i.sku).p.id===p.id)));
   const rows=[];
   ok.forEach(p=>{
-    const doneSkus=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='8 图'&&i.status==='成功')));
+    const doneSkus=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='图片 8 项'&&i.status==='成功')));
     if(!doneSkus.length)return;
     const vids=p.skus.filter(s=>jobs.some(j=>j.items.some(i=>i.sku===s.id&&i.out==='15s 视频'&&i.status==='成功')));
     const names=doneSkus.map(s=>s.color+(p.skus.filter(x=>x.color===s.color).length>1?' '+s.spec:'')).join(' / ');
