@@ -342,6 +342,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .gs-ref{position:relative;display:inline-block;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
 .gs-ref img{width:100%;height:100%;object-fit:cover;display:block}
 .gs-ref button{position:absolute;top:0;right:0;width:16px;height:16px;border-radius:0 0 0 6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px}
+.gs-ref .pm-main{position:absolute;left:0;bottom:0;background:rgba(79,70,229,.85);color:#fff;font-size:9px;line-height:14px;padding:0 4px;border-radius:0 6px 0 0}
 .gs-size{display:flex;align-items:center;gap:8px}
 .gs-size label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex:1}
 .gs-size .input{padding:6px 8px}
@@ -465,7 +466,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
             <div class="flex">
               <button class="btn btn-soft" onclick="openLinkModal()">🔗 链接导入</button>
               <button class="btn btn-ghost" onclick="toast('原型：Excel 批量导入在 P1，先做模板 + 校验 + 草稿')">⇪ 批量导入</button>
-              <button class="btn btn-primary" onclick="openModal('product-modal')">＋ 新建商品</button>
+              <button class="btn btn-primary" onclick="openProductModal()">＋ 新建商品</button>
             </div>
           </div>
           <div class="notice amber" id="product-pending-bar" hidden></div>
@@ -867,7 +868,18 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
           </select>
         </div>
       </div>
+      <div class="row cols-2">
+        <div class="field"><label for="pm-code">商品编码</label><input class="input mono" id="pm-code" placeholder="如 SKU-CODE-001"></div>
+        <div class="field"><label for="pm-brand">品牌</label><input class="input" id="pm-brand" placeholder="用于品牌 VI 与禁用词"></div>
+      </div>
       <div class="field"><label for="pm-pitch">卖点</label><textarea class="textarea" id="pm-pitch" placeholder="1–2 句核心卖点，用于主图与视频文案"></textarea></div>
+      <div class="field">
+        <label>商品图片<span class="small muted" style="font-weight:400"> 建议 3–5 张，第一张为主图</span></label>
+        <div class="gs-drop" id="pm-drop">点击或拖拽图片到这里</div>
+        <input type="file" id="pm-files" accept="image/*" multiple hidden onchange="pmPickFiles(this)">
+        <div class="chips" id="pm-images"></div>
+        <p class="small muted" style="margin-top:6px">图片落 raw 桶，作为抠图与字段证据，不参与素材版本链。</p>
+      </div>
       <div class="field">
         <div class="flex" style="justify-content:space-between;margin-bottom:5px">
           <label style="margin:0">品类必填字段（随品类切换）</label>
@@ -875,9 +887,19 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
         </div>
         <ul class="checklist" id="pm-fields"></ul>
       </div>
-      <div class="field"><label>SKU 列表</label>
-        <table class="table"><thead><tr><th>颜色</th><th>规格</th><th>售价</th></tr></thead>
-        <tbody><tr><td class="muted">—</td><td class="muted">保存后在详情页补充</td><td class="muted">—</td></tr></tbody></table>
+      <div class="field">
+        <label>其他参数</label>
+        <table class="table"><thead><tr><th style="width:42%">参数名</th><th>参数值</th><th style="width:48px"></th></tr></thead>
+          <tbody id="pm-params"></tbody></table>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="pmAddParam()">＋ 添加参数</button>
+        <p class="small muted" style="margin-top:6px">自定义参数不参与生成阻断，仅作展示与文案依据。</p>
+      </div>
+      <div class="field"><label>默认 SKU（可留空，稍后在详情页补）</label>
+        <div class="row cols-3">
+          <input class="input" id="pm-sku-color" placeholder="颜色">
+          <input class="input" id="pm-sku-spec" placeholder="规格">
+          <input class="input" id="pm-sku-price" placeholder="售价（元）" inputmode="decimal">
+        </div>
       </div>
       <div class="notice red" id="pm-error" hidden></div>
     </div>
@@ -1323,6 +1345,9 @@ function renderPdAttrs(p){
       <div class="flex" style="justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-ghost btn-sm" onclick="confirmAllAttrs()">批量确认非高敏字段</button>
       </div>
+      ${Object.keys(p.params||{}).length?`<hr class="hr"><div class="field"><label>其他参数</label>
+        <table class="table"><tbody>${Object.entries(p.params).map(([k,v])=>`<tr><td style="width:160px">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+        <p class="small muted" style="margin-top:6px">自定义参数不参与生成阻断，仅作展示与文案依据。</p></div>`:''}
     </div></div>`;
   $('pd-body').onchange=e=>{
     const el=e.target.closest('[data-f]');if(!el)return;
@@ -1354,7 +1379,11 @@ function renderPdSku(p){
 }
 function renderPdImages(p){
   const sub=CATS[p.cat].subject;
+  const imgs=p.images||[];
   $('pd-body').innerHTML=`<div class="notice">图片是商品事实的证据：原图、包装多角度、成分表 / 检测报告。每张标注用途，供字段引用。</div>
+    ${imgs.length?`<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>已上传图片</h3><span class="sub">${imgs.length} 张 · 第一张为主图</span></div>
+      <div class="card-b"><div class="gs-recent" style="flex-wrap:wrap">${imgs.map((u,i)=>
+        `<div class="gs-recent-item" style="width:150px"><img src="${u}" alt="" style="height:120px"><span class="gs-recent-label">${i===0?'主图':`图 ${i+1}`}</span></div>`).join('')}</div></div></div>`:''}
     <div class="three-col">${[['原始图','主图源图，≥3 张'],['包装多角度','瓶身 / 盒身 / 标签'],['证据图','成分表 / 检测报告 / 认证']].map(([t,d])=>
       `<div class="card"><div class="card-h"><h3>${t}</h3><span class="sub">${d}</span></div>
         <div class="card-b" style="text-align:center">
@@ -1468,7 +1497,61 @@ function applyBatchPrice(){
 }
 
 /* ============ 新建商品弹窗 ============ */
-let draft={};
+let draft={}, pmImages=[], pmParams=[{k:'',v:''}];
+function openProductModal(){
+  pmImages=[];pmParams=[{k:'',v:''}];draft={};
+  ['pm-name','pm-pitch','pm-code','pm-brand','pm-sku-color','pm-sku-spec','pm-sku-price'].forEach(id=>{const el=$(id);if(el)el.value='';});
+  pmRenderImages();pmRenderParams();renderNewProductFields();
+  $('pm-error').hidden=true;
+  openModal('product-modal');
+}
+function pmBindDrop(){
+  const el=$('pm-drop');if(!el||el.dataset.bound)return;el.dataset.bound='1';
+  el.addEventListener('click',()=>$('pm-files').click());
+  ['dragenter','dragover'].forEach(t=>el.addEventListener(t,e=>{e.preventDefault();el.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>el.addEventListener(t,e=>{e.preventDefault();el.classList.remove('over');}));
+  el.addEventListener('drop',e=>{if(e.dataTransfer)pmAddFiles([...e.dataTransfer.files]);});
+}
+function pmPickFiles(input){pmAddFiles([...input.files]);input.value='';}
+function pmAddFiles(files){
+  files.filter(f=>f.type.startsWith('image/')).slice(0,6-pmImages.length).forEach(f=>{
+    pmCompress(f).then(url=>{if(url){pmImages.push({name:f.name,dataUrl:url});pmRenderImages();}});
+  });
+}
+function pmCompress(file){
+  return new Promise(resolve=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{
+      const max=900;const k=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg',0.82));
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);resolve(null);};
+    img.src=url;
+  });
+}
+function pmRenderImages(){
+  const el=$('pm-images');if(!el)return;
+  el.innerHTML=pmImages.map((im,i)=>`<span class="gs-ref" title="${esc(im.name)}">
+    <img src="${im.dataUrl}" alt="">
+    <button type="button" aria-label="移除" onclick="pmRemoveImage(${i})">×</button>
+    ${i===0?'<b class="pm-main">主图</b>':''}</span>`).join('');
+}
+function pmRemoveImage(i){pmImages.splice(i,1);pmRenderImages();}
+function pmRenderParams(){
+  const el=$('pm-params');if(!el)return;
+  el.innerHTML=pmParams.map((p,i)=>`<tr>
+    <td><input class="input" value="${esc(p.k)}" placeholder="如 净含量" oninput="pmParams[${i}].k=this.value"></td>
+    <td><input class="input" value="${esc(p.v)}" placeholder="如 150ml" oninput="pmParams[${i}].v=this.value"></td>
+    <td><button type="button" class="btn btn-ghost btn-sm" onclick="pmRemoveParam(${i})" aria-label="删除">×</button></td>
+  </tr>`).join('');
+}
+function pmAddParam(){pmParams.push({k:'',v:''});pmRenderParams();}
+function pmRemoveParam(i){pmParams.splice(i,1);pmRenderParams();}
+
 const AI_SAMPLE={
   beauty:{'容量':'150ml','成分':'氨基酸表活'},
   home:{'尺寸':'200×230cm','颜色':'雾蓝'},
@@ -1496,13 +1579,27 @@ function saveNewProduct(){
   const name=$('pm-name').value.trim(), cat=$('pm-cat').value, err=$('pm-error');
   if(!name){err.textContent='请填写商品名称';err.hidden=false;$('pm-name').focus();return;}
   const fields={};CATS[cat].fields.forEach(f=>fields[f]=draft[f]&&draft[f].v?{...draft[f]}:{v:'',src:'missing'});
+  const params={};
+  pmParams.forEach(p=>{if(p.k.trim()&&p.v.trim())params[p.k.trim()]=p.v.trim();});
+  const skus=[];
+  const price=parseFloat($('pm-sku-price').value);
+  if(Number.isFinite(price)){
+    skus.push({id:'s_'+Date.now(),color:$('pm-sku-color').value.trim()||'默认',spec:$('pm-sku-spec').value.trim()||'默认',price});
+  }
   const id='p_'+Date.now();
-  products.push({id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),
-    affected:0,fields,skus:[],source:'manual',updatedAt:now()});
+  products.push({
+    id,name,short:name.split(/\s+/).pop(),cat,pitch:$('pm-pitch').value.trim(),
+    code:$('pm-code').value.trim(),brand:$('pm-brand').value.trim(),
+    affected:0,fields,params,images:pmImages.map(i=>i.dataUrl),skus,
+    source:'manual',updatedAt:now(),
+  });
   saveProducts();
-  audit.push({obj:name,op:'新建商品主档',from:'—',to:CATS[cat].name,who:OPERATOR,at:now()});
+  audit.push({obj:name,op:'新建商品主档',from:'—',to:`${CATS[cat].name} · ${pmImages.length} 张图 · ${Object.keys(params).length} 个参数`,who:OPERATOR,at:now()});
   closeModal('product-modal');
-  $('pm-name').value='';$('pm-pitch').value='';err.hidden=true;draft={};renderNewProductFields();
+  $('pm-name').value='';$('pm-pitch').value='';$('pm-code').value='';$('pm-brand').value='';
+  $('pm-sku-color').value='';$('pm-sku-spec').value='';$('pm-sku-price').value='';
+  err.hidden=true;draft={};pmImages=[];pmParams=[{k:'',v:''}];
+  pmRenderImages();pmRenderParams();renderNewProductFields();
   go('products');openProduct(id);renderProductList();
   const pend=Object.values(fields).filter(f=>f.src!=='human').length;
   toast(pend?`已保存，${pend} 个必填字段待补 / 待确认`:'已保存');
@@ -2462,11 +2559,13 @@ $('bm-tpl').innerHTML=Object.entries(TEMPLATES).map(([k,t])=>`<option value="${k
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
 refreshSidebarModels();
+pmBindDrop();
 const __hash=(location.hash||'').replace('#','');
 if(__hash){
   const [__pg,__arg,__tab]=__hash.split('/');
   if(TITLES[__pg])go(__pg);
-  if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
+  if(__pg==='products'&&__arg==='new'){openProductModal();}
+  else if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
 }
 </script>
 </body>
