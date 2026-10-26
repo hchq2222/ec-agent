@@ -195,3 +195,90 @@ class WorkflowStep(Base):
     result: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Product(Base):
+    """AI 对话录入产生的商品主档。草稿可反复修改，确认后才进入制作。"""
+
+    __tablename__ = "product"
+    __table_args__ = (
+        Index("ix_product_status", "status"),
+        Index("ix_product_created_at", "created_at"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), default="beauty", nullable=False)
+    brand: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    code: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    pitch: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="draft", nullable=False)
+    source: Mapped[str] = mapped_column(String(24), default="ai_intake", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class ProductAttr(Base):
+    """商品事实：source=ai 表示待确认，human 表示人工确认过。"""
+
+    __tablename__ = "product_attr"
+    __table_args__ = (Index("ix_product_attr_product", "product_id"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("app.product.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(80), nullable=False)
+    value: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="ai", nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class ProductSKU(Base):
+    __tablename__ = "sku"
+    __table_args__ = (Index("ix_sku_product", "product_id"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("app.product.id", ondelete="CASCADE"), nullable=False
+    )
+    color: Mapped[str] = mapped_column(String(80), default="默认", nullable=False)
+    spec: Mapped[str] = mapped_column(String(80), default="默认", nullable=False)
+    price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ProductImage(Base):
+    __tablename__ = "product_image"
+    __table_args__ = (Index("ix_product_image_product", "product_id"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("app.product.id", ondelete="CASCADE"), nullable=False
+    )
+    object_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime: Mapped[str] = mapped_column(String(128), default="application/octet-stream", nullable=False)
+    bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    kind: Mapped[str] = mapped_column(String(24), default="source", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ProductMessage(Base):
+    __tablename__ = "product_intake_message"
+    __table_args__ = (Index("ix_product_message_product", "product_id", "created_at"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("app.product.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    attachments: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

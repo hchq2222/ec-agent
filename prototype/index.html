@@ -152,6 +152,17 @@ a{color:inherit;text-decoration:none}
 .table tr:hover td{background:#fafbfc}
 .plan-table td{padding:7px 8px}
 .plan-table input[type=number]{width:76px}
+.pi-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.pi-chat,.pi-draft{min-width:0}
+.pi-messages{height:260px;overflow:auto;background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.pi-msg{max-width:88%;padding:8px 10px;border-radius:10px;font-size:12.5px;line-height:1.5;white-space:pre-wrap}
+.pi-msg.user{align-self:flex-end;background:var(--brand);color:#fff}
+.pi-msg.assistant{align-self:flex-start;background:#fff;border:1px solid var(--line)}
+.pi-msg.system{align-self:center;background:var(--line-2);color:var(--muted);font-size:11.5px;max-width:95%}
+.pi-draft{max-height:560px;overflow:auto}
+.pi-draft .card{box-shadow:none;border:1px solid var(--line-2)}
+.pi-file{display:inline-flex;align-items:center;gap:5px;background:var(--line-2);border-radius:7px;padding:3px 7px;font-size:11.5px}
+@media(max-width:820px){.pi-grid{grid-template-columns:1fr}.pi-messages{height:200px}.pi-draft{max-height:none}}
 
 /* Forms */
 .field{margin-bottom:13px}
@@ -502,9 +513,10 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
           <div class="page-head">
             <div><h1>商品档案</h1><p>一次录入真实商品资料，供后续所有制作模块调用。商品事实只来自商家资料，AI 只整理不补全。</p></div>
             <div class="flex">
+              <button class="btn btn-primary" onclick="openIntake()">✨ AI 录入</button>
               <button class="btn btn-soft" onclick="openLinkModal()">🔗 链接导入</button>
               <button class="btn btn-ghost" onclick="toast('原型：Excel 批量导入在 P1，先做模板 + 校验 + 草稿')">⇪ 批量导入</button>
-              <button class="btn btn-primary" onclick="openProductModal()">＋ 新建商品</button>
+              <button class="btn btn-ghost" onclick="openProductModal()">＋ 手动新建</button>
             </div>
           </div>
           <div class="notice amber" id="product-pending-bar" hidden></div>
@@ -519,7 +531,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
                   <option value="all">全部状态</option><option value="complete">档案完整</option><option value="confirm">待确认</option><option value="delivery">仅缺交付</option><option value="pending">阻断生成</option>
                 </select>
                 <select class="select" id="product-source" style="width:120px" onchange="productSource=this.value;renderProductList()">
-                  <option value="all">全部来源</option><option value="manual">手工新建</option><option value="link">链接导入</option>
+                  <option value="all">全部来源</option><option value="manual">手工新建</option><option value="link">链接导入</option><option value="ai_intake">AI 识别</option>
                 </select>
               </div>
               <span class="pill gray" id="product-count"></span>
@@ -947,6 +959,34 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <div class="notice red" id="pm-error" hidden></div>
     </div>
     <div class="modal-f"><button class="btn btn-ghost" onclick="closeModal('product-modal')">取消</button><button class="btn btn-primary" onclick="saveNewProduct()">保存商品主档</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="intake-modal">
+  <div class="modal" style="max-width:980px" role="dialog" aria-modal="true" aria-labelledby="pi-title">
+    <div class="modal-h"><h3 id="pi-title">AI 录入商品</h3><span class="pill brand">图片 / PDF / 文字</span><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('intake-modal')">✕</button></div>
+    <div class="modal-b">
+      <div class="pi-grid">
+        <div class="pi-chat">
+          <div class="notice blue">把商品图、包装图、手册页（图片或 PDF）或文字发给模型。模型只整理资料里出现的事实，不补全；识别结果可先修改再入库。资料会发送给模型服务用于识别，不要上传与商品无关的敏感文件。</div>
+          <div class="pi-messages" id="pi-messages"></div>
+          <div class="chips" id="pi-files"></div>
+          <textarea class="textarea" id="pi-text" rows="3" placeholder="例如：这是森序洁面乳的包装和成分表，帮我建档；规格 150ml，售价 129"></textarea>
+          <div class="flex" style="justify-content:space-between;margin-top:8px">
+            <div class="flex">
+              <label class="btn btn-ghost btn-sm" for="pi-file">＋ 图片 / PDF</label>
+              <input type="file" id="pi-file" accept="image/*,application/pdf" multiple hidden onchange="piPick(this)">
+              <span class="small muted" id="pi-hint">最多 6 个文件</span>
+            </div>
+            <button type="button" class="btn btn-primary" id="pi-send" onclick="piSend()">发送给模型</button>
+          </div>
+        </div>
+        <div class="pi-draft" id="pi-draft">
+          <div class="notice">识别结果会显示在这里；可以先修改，再入库。</div>
+        </div>
+      </div>
+      <div class="notice red" id="pi-error" hidden></div>
+    </div>
   </div>
 </div>
 
@@ -1397,7 +1437,7 @@ function renderProductList(){
     <tbody>${list.map(p=>{
       const st=pStatus(p),n=assetCount(p.id),prices=p.skus.map(s=>s.price);
       const range=prices.length?(Math.min(...prices)===Math.max(...prices)?`¥${prices[0]}`:`¥${Math.min(...prices)}–${Math.max(...prices)}`):'—';
-      const src=p.source==='link'?'<span class="pill gray">链接导入</span>':'<span class="pill gray">手工新建</span>';
+      const src=p.source==='link'?'<span class="pill gray">链接导入</span>':p.source==='ai_intake'?'<span class="pill brand">AI 识别</span>':'<span class="pill gray">手工新建</span>';
       return `<tr onclick="openProduct('${p.id}')">
         <td><div class="product-cell"><span class="thumb" style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex:none">${productSVG(CATS[p.cat].subject)}</span>
           <span style="min-width:0"><span class="n">${esc(p.name)}</span><span class="s">${esc(p.short||'')} ${src}</span></span></div></td>
@@ -1468,7 +1508,7 @@ function renderPdBasic(p,gen,del){
         <div class="field"><label>品牌</label><input class="input" data-k="brand" value="${esc(p.brand||'')}" placeholder="用于品牌 VI 与禁用词"></div>
         <div class="field"><label>卖点（最多 3 条）</label><textarea class="textarea" data-k="pitch" rows="3">${esc(p.pitch||'')}</textarea></div>
         <div class="field"><label>来源</label>
-          <div class="flex">${p.source==='link'?`<span class="pill gray">链接导入</span><span class="small muted mono">${esc(p.sourceUrl||'')}</span>`:'<span class="pill gray">手工新建</span>'}</div>
+          <div class="flex">${p.source==='link'?`<span class="pill gray">链接导入</span><span class="small muted mono">${esc(p.sourceUrl||'')}</span>`:p.source==='ai_intake'?'<span class="pill brand">AI 识别 · 可修改</span>':'<span class="pill gray">手工新建</span>'}</div>
         </div>
         <div class="flex" style="justify-content:flex-end"><button type="button" class="btn btn-primary btn-sm" onclick="saveBasic()">保存基础信息</button></div>
       </div>
@@ -1762,6 +1802,223 @@ function saveNewProduct(){
   go('products');openProduct(id);renderProductList();
   const pend=Object.values(fields).filter(f=>f.src!=='human').length;
   toast(pend?`已保存，${pend} 个必填字段待补 / 待确认`:'已保存');
+}
+
+/* ============ AI 对话录入商品 ============ */
+let piProductId=null, piFiles=[], piBusy=false, piDraftData=null;
+
+function openIntake(productId=null){
+  piProductId=productId;
+  piFiles=[];piBusy=false;piDraftData=null;
+  $('pi-text').value='';$('pi-error').hidden=true;
+  $('pi-messages').innerHTML='';$('pi-files').innerHTML='';
+  $('pi-draft').innerHTML='<div class="notice">识别结果会显示在这里；可以先修改，再入库。</div>';
+  $('pi-hint').textContent='最多 6 个文件';
+  piAddMessage('assistant','把商品图、包装图、手册页（图片或 PDF）或文字发给我。我会只整理资料里出现的信息，识别完你可以先改再入库。');
+  openModal('intake-modal');
+  if(productId)piLoadProduct(productId);
+}
+function piAddMessage(role,text){
+  const el=document.createElement('div');
+  el.className='pi-msg '+role;
+  el.textContent=text;
+  $('pi-messages').appendChild(el);
+  $('pi-messages').scrollTop=$('pi-messages').scrollHeight;
+  return el;
+}
+function piError(message){const e=$('pi-error');e.hidden=false;e.textContent=message;}
+function piPick(input){
+  const picked=[...input.files];input.value='';
+  (async()=>{
+    for(const f of picked){
+      if(piFiles.length>=6){toast('一次最多 6 个文件');break;}
+      const ok=f.type.startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+      if(!ok){toast(`不支持的文件：${f.name}`);continue;}
+      if(f.size>10*1024*1024){toast(`${f.name} 超过 10MB`);continue;}
+      let file=f;
+      if(f.type.startsWith('image/'))file=await piCompress(f);
+      piFiles.push({file,name:f.name,mime:file.type||f.type});
+    }
+    piRenderFiles();
+  })();
+}
+function piCompress(file){
+  return new Promise(resolve=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{
+      const max=1600,k=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b=>resolve(new File([b],file.name.replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'})),'image/jpeg',0.86);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};
+    img.src=url;
+  });
+}
+function piRenderFiles(){
+  $('pi-files').innerHTML=piFiles.map((f,i)=>`<span class="pi-file">${esc(f.name)} <button type="button" aria-label="移除" onclick="piRemoveFile(${i})" style="border:0;background:transparent;color:inherit;cursor:pointer">×</button></span>`).join('');
+  $('pi-hint').textContent=`${piFiles.length}/6 个文件`;
+}
+function piRemoveFile(i){piFiles.splice(i,1);piRenderFiles();}
+async function piSend(){
+  if(piBusy)return;
+  const text=$('pi-text').value.trim();
+  if(!text&&!piFiles.length){toast('先发一段文字或上传图片/PDF');return;}
+  piBusy=true;$('pi-send').disabled=true;$('pi-error').hidden=true;
+  piAddMessage('user',text||`（发送了 ${piFiles.length} 个文件）`);
+  const typing=piAddMessage('system','模型正在识别资料…');
+  const fd=new FormData();
+  fd.append('message',text);
+  if(piProductId)fd.append('product_id',piProductId);
+  piFiles.forEach(f=>fd.append('files',f.file,f.name));
+  try{
+    const r=await fetch(`${GS_API}/api/products/intake`,{method:'POST',body:fd});
+    const body=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(body.detail||`识别失败（HTTP ${r.status}）`);
+    piProductId=body.data.id;
+    piDraftData=body.data;
+    typing.remove();
+    piAddMessage('assistant',body.reply||'已整理出草稿，请核对字段。');
+    piRenderDraft(body.data);
+    piFiles=[];piRenderFiles();$('pi-text').value='';
+  }catch(e){
+    typing.remove();
+    piError(e.message||'识别失败');
+    piAddMessage('system','识别失败：'+(e.message||'未知错误'));
+  }finally{
+    piBusy=false;$('pi-send').disabled=false;
+  }
+}
+function piRenderDraft(d){
+  const cat=d.category||'beauty';
+  $('pi-draft').innerHTML=`<div class="card">
+    <div class="card-h"><h3>识别草稿</h3><span class="pill ${d.status==='confirmed'?'green':'amber'}">${d.status==='confirmed'?'已入库':'待确认'}</span></div>
+    <div class="card-b">
+      <div class="row cols-2">
+        <div class="field"><label for="pi-name">商品名称</label><input class="input" id="pi-name" value="${esc(d.name||'')}"></div>
+        <div class="field"><label for="pi-cat">品类</label><select class="select" id="pi-cat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===cat?'selected':''}>${v.name}</option>`).join('')}</select></div>
+      </div>
+      <div class="row cols-2">
+        <div class="field"><label for="pi-brand">品牌</label><input class="input" id="pi-brand" value="${esc(d.brand||'')}"></div>
+        <div class="field"><label for="pi-code">商品编码</label><input class="input mono" id="pi-code" value="${esc(d.code||'')}" placeholder="可留空"></div>
+      </div>
+      <div class="field"><label for="pi-pitch">卖点</label><textarea class="textarea" id="pi-pitch" rows="2">${esc(d.pitch||'')}</textarea></div>
+      <div class="field"><label>商品参数 <span class="small muted" style="font-weight:400">AI 整理，可改</span></label>
+        <table class="table"><thead><tr><th style="width:32%">参数</th><th>值</th><th style="width:16%">单位</th><th style="width:40px"></th></tr></thead><tbody id="pi-attrs"></tbody></table>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="piAddAttr()">＋ 添加参数</button>
+      </div>
+      <div class="field"><label>SKU</label>
+        <table class="table"><thead><tr><th>颜色</th><th>规格</th><th style="width:110px">售价（元）</th><th style="width:40px"></th></tr></thead><tbody id="pi-skus"></tbody></table>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="piAddSku()">＋ 添加 SKU</button>
+      </div>
+      ${(d.missing||[]).length?`<div class="notice amber">资料里还缺：${d.missing.map(esc).join('、')}。可以继续补充，或先入库稍后完善。</div>`:''}
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="piSave(false)">保存草稿</button>
+        <button type="button" class="btn btn-primary" onclick="piSave(true)">确认入库</button>
+      </div>
+    </div></div>`;
+  piRenderAttrRows();piRenderSkuRows();
+}
+function piRenderAttrRows(){
+  const rows=(piDraftData&&piDraftData.attrs)||[];
+  $('pi-attrs').innerHTML=rows.map((a,i)=>`<tr>
+    <td><input class="input pi-attr-key" value="${esc(a.key||'')}" placeholder="如 容量"></td>
+    <td><input class="input pi-attr-val" value="${esc(a.value||'')}" placeholder="如 150"></td>
+    <td><input class="input pi-attr-unit" value="${esc(a.unit||'')}" placeholder="ml"></td>
+    <td><button type="button" class="btn btn-ghost btn-sm" onclick="piRemoveAttr(${i})" aria-label="删除">×</button></td></tr>`).join('');
+}
+function piRenderSkuRows(){
+  const rows=(piDraftData&&piDraftData.skus)||[];
+  $('pi-skus').innerHTML=rows.map((s,i)=>`<tr>
+    <td><input class="input pi-sku-color" value="${esc(s.color||'')}" placeholder="青绿色"></td>
+    <td><input class="input pi-sku-spec" value="${esc(s.spec||'')}" placeholder="150ml"></td>
+    <td><input class="input pi-sku-price" value="${s.price??''}" placeholder="129" inputmode="decimal"></td>
+    <td><button type="button" class="btn btn-ghost btn-sm" onclick="piRemoveSku(${i})" aria-label="删除">×</button></td></tr>`).join('');
+}
+function piSyncDraft(){
+  if(!piDraftData)return;
+  piDraftData.name=$('pi-name')?.value.trim()||'';
+  piDraftData.category=$('pi-cat')?.value||'beauty';
+  piDraftData.brand=$('pi-brand')?.value.trim()||'';
+  piDraftData.code=$('pi-code')?.value.trim()||'';
+  piDraftData.pitch=$('pi-pitch')?.value.trim()||'';
+  piDraftData.attrs=[...document.querySelectorAll('#pi-attrs tr')].map(tr=>({
+    key:tr.querySelector('.pi-attr-key').value.trim(),
+    value:tr.querySelector('.pi-attr-val').value.trim(),
+    unit:tr.querySelector('.pi-attr-unit').value.trim(),
+  })).filter(a=>a.key||a.value);
+  piDraftData.skus=[...document.querySelectorAll('#pi-skus tr')].map(tr=>({
+    color:tr.querySelector('.pi-sku-color').value.trim()||'默认',
+    spec:tr.querySelector('.pi-sku-spec').value.trim()||'默认',
+    price:Number.parseFloat(tr.querySelector('.pi-sku-price').value)||null,
+  }));
+}
+function piAddAttr(){piSyncDraft();piDraftData.attrs=piDraftData.attrs||[];piDraftData.attrs.push({key:'',value:'',unit:''});piRenderAttrRows();}
+function piRemoveAttr(i){piSyncDraft();piDraftData.attrs.splice(i,1);piRenderAttrRows();}
+function piAddSku(){piSyncDraft();piDraftData.skus=piDraftData.skus||[];piDraftData.skus.push({color:'',spec:'',price:null});piRenderSkuRows();}
+function piRemoveSku(i){piSyncDraft();piDraftData.skus.splice(i,1);piRenderSkuRows();}
+async function piSave(confirmed){
+  if(!piProductId)return;
+  piSyncDraft();
+  const payload={
+    name:piDraftData.name||'未命名商品',
+    category:piDraftData.category||'beauty',
+    brand:piDraftData.brand||'',
+    code:piDraftData.code||'',
+    pitch:piDraftData.pitch||'',
+    status:confirmed?'confirmed':'draft',
+    attrs:(piDraftData.attrs||[]).filter(a=>a.key&&a.value).map(a=>({key:a.key,value:a.value,unit:a.unit||'',source:confirmed?'human':'ai',confirmed:!!confirmed})),
+    skus:(piDraftData.skus||[]).map(s=>({color:s.color||'默认',spec:s.spec||'默认',price:s.price??null})),
+  };
+  try{
+    const r=await fetch(`${GS_API}/api/products/${piProductId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const body=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(body.detail||`保存失败（HTTP ${r.status}）`);
+    mergeApiProduct(mapApiProduct(body.data));
+    saveProducts();closeModal('intake-modal');go('products');openProduct(body.data.id);renderProductList();
+    toast(confirmed?'已确认入库，可在商品档案继续修改':'草稿已保存');
+  }catch(e){piError(e.message||'保存失败');}
+}
+async function piLoadProduct(id){
+  try{
+    const r=await fetch(`${GS_API}/api/products/${id}`);
+    if(!r.ok)return;
+    const body=await r.json();
+    piDraftData=body.data;piProductId=body.data.id;
+    (body.data.messages||[]).forEach(m=>piAddMessage(m.role==='user'?'user':'assistant',m.content));
+    piRenderDraft(body.data);
+  }catch(e){}
+}
+function mapApiProduct(d){
+  const fields={};
+  (d.attrs||[]).forEach(a=>{fields[a.key]={v:[a.value,a.unit].filter(Boolean).join(' '),src:a.confirmed?'human':'ai'};});
+  const cat=CATS[d.category]?d.category:'beauty';
+  return {
+    id:d.id,name:d.name,short:d.name,cat,pitch:d.pitch||'',code:d.code||'',brand:d.brand||'',
+    affected:0,fields,params:{},images:(d.images||[]).filter(i=>(i.mime||'').startsWith('image/')).map(i=>i.url),
+    skus:(d.skus||[]).map(s=>({id:s.id,color:s.color,spec:s.spec,price:s.price||0})),
+    source:'ai_intake',updatedAt:(d.updated_at||'').slice(0,16).replace('T',' ')||now(),
+  };
+}
+function mergeApiProduct(p){
+  const i=products.findIndex(x=>x.id===p.id);
+  if(i>=0)products[i]=p;else products.unshift(p);
+}
+async function loadProductsFromApi(){
+  try{
+    const r=await fetch(`${GS_API}/api/products`);
+    if(!r.ok)return;
+    const body=await r.json();
+    let changed=false;
+    (body.data||[]).forEach(d=>{
+      const p=mapApiProduct(d),i=products.findIndex(x=>x.id===p.id);
+      if(i>=0)products[i]=p;else products.unshift(p);
+      changed=true;
+    });
+    if(changed){saveProducts();renderProductList();renderOverviewProducts();}
+  }catch(e){}
 }
 
 /* ============ 链接导入商品 ============ */
@@ -2685,7 +2942,7 @@ const SETTINGS_VIEWS={
         <tr><td>环境</td><td>测试环境 · 单租户</td></tr>
         <tr><td>中间件</td><td>PostgreSQL 17 / Redis 7.4 / MinIO</td></tr>
         <tr><td>时区</td><td>Asia/Shanghai (UTC+8)</td></tr>
-        <tr><td>API</td><td class="mono">http://127.0.0.1:8000</td></tr>
+        <tr><td>API</td><td class="mono">${location.protocol==='file:'?'http://127.0.0.1:8000':location.origin}</td></tr>
       </tbody></table>
     </div>
   </div>`,
@@ -2743,7 +3000,7 @@ function pickStudioChannel(id){studioChannelId=id;renderStudio();}
 function currentModel(){const el=$('gen-model');return el?el.value:'—';}
 
 /* ============ 生图工作台（真实后端） ============ */
-const GS_API=(localStorage.getItem('proto.apiBase')||'http://127.0.0.1:8000').replace(/\/$/,'');
+const GS_API=(localStorage.getItem('proto.apiBase')||(location.protocol==='file:'?'http://127.0.0.1:8000':location.origin)).replace(/\/$/,'');
 const gs={inited:false,online:false,channels:[],channelId:null,models:[],refs:[],quality:'auto',res:'auto',ratio:'1:1',n:1,busy:false,history:[],activeJob:null};
 
 async function gsApi(path,opts){
@@ -3038,6 +3295,7 @@ function refreshAll(){
 document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.classList.contains('active')));
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
+loadProductsFromApi();
 refreshSidebarModels();
 pmBindDrop();
 const __hash=(location.hash||'').replace('#','');
@@ -3045,6 +3303,7 @@ if(__hash){
   const [__pg,__arg,__tab]=__hash.split('/');
   if(TITLES[__pg])go(__pg);
   if(__pg==='products'&&__arg==='new'){openProductModal();}
+  else if(__pg==='products'&&__arg==='intake'){go('products');openIntake();}
   else if(__pg==='products'&&__arg&&pById(__arg)){openProduct(__arg);if(__tab){pdTab=__tab;renderProductDetail();}}
   else if(__pg==='tasks'&&__arg==='batch'){openBatch();}
   else if(__pg==='projects'&&__arg&&projectPrototypes.some(p=>p.id===__arg)){projectOpen(__arg);}

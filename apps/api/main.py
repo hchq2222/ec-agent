@@ -683,3 +683,5 @@ mount_static()
 
 from .projects import router as projects_router  # noqa: E402
 app.include_router(projects_router)
+from .products import router as products_router  # noqa: E402
+app.include_router(products_router)
