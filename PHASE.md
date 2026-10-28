@@ -172,7 +172,7 @@
 - ✅ **单位可正常填写**：确认输入框本身没有 `readonly/disabled`，此前不可填是列宽被压到 23.6px 导致；固定布局后默认约 87px。
 - ✅ **品类可输入**：`select` 改为 `input + datalist`，支持输入 key / 全名 / 忽略空格包含匹配；保存前解析为 `beauty|home|digital`，识别不了的文案会提示并阻止提交（后端仍是三枚举，未扩品类）。
 - ✅ **验证**：Edge 无头（`--headless=new --dump-dom`）实测列宽 `204/267/87/43`，参数列 +40px 生效且总和不变，单位列拖动下限 56px，刷新后列宽恢复；`3C配件→digital`、`食品饮料→null 拦截`；脚本语法检查通过。
-- 🟡 **未部署**：`http://203.0.113.10:18080/` 仍是旧版本；本机缺 `infrastructure/credentials.local.md`，SSH 只有密码认证，待补凭据或由有权限的人同步 `prototype/index.html`。
+- ✅ **已部署**：上传到 `/opt/ec-agent-pro/app/prototype/index.html`，线上 md5 `e587188e8887a3c0f24637f7db301e5a` 与本地一致；`http://203.0.113.10:18080/` 返回 200，页面含 `pi-attr-table` / `col-grip` / `pi-cat-list`；旧文件备份为 `index.html.bak-20261028`。部署步骤与坑记在 `infrastructure/deploy.local.md`，SSH 凭据落在 `infrastructure/credentials.local.md`（gitignored，未提交）。
 
 ---
 
