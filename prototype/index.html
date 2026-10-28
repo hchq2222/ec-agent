@@ -1460,67 +1460,71 @@ function pjAddVersion(pr,skuId,result){
   if(typeof renderVersions==='function')renderVersions();
   if(typeof renderAudit==='function')renderAudit();
 }
-async function pjRunNext(){
+/* 生成之后的非生成节点自动推进；遇到下一个生成节点或人工确认就停下 */
+function pjAdvanceAuto(pr,run){
+  while(run.progress<pr.nodes.length){
+    const n=pr.nodes[run.progress];
+    if(n.type==='generate'||n.type==='refine'){run.status='pending';break;}
+    if(n.type==='human_review'){run.states[n.id]='waiting';run.status='waiting';break;}
+    run.states[n.id]='done';run.progress++;
+    if(n.type==='deliver'){run.status='done';break;}
+  }
+  if(run.progress>=pr.nodes.length)run.status='done';
+}
+/* 只执行一个生成节点：先写提示词，再人工点「生成图片」 */
+async function pjGenerateNode(){
   if(pjBusy)return;
   const pr=projectCurrent(),p=pr&&pById(pr.productId);if(!pr||!p)return;
   const sku=projectSkuId||p.skus[0]?.id||'';
   if(!sku){toast('该商品还没有 SKU');return;}
   const run=pr.runs[sku]=pr.runs[sku]||{progress:0,status:'pending',states:{}};
-  if(run.status==='running'){
-    if(pjBusy)return;          // 真的有请求在跑
-    run.status='failed';       // 上次中断留下的假运行态，本次直接重试
+  // 选中了生成节点就用它；否则取第一个还没跑的生成节点
+  let idx=pr.nodes.findIndex(n=>n.id===projectNodeId&&(n.type==='generate'||n.type==='refine'));
+  if(idx<0)idx=pr.nodes.findIndex((n,i)=>i>=run.progress&&(n.type==='generate'||n.type==='refine'));
+  if(idx<0){toast('画布里没有待生成的节点');return;}
+  const n=pr.nodes[idx];
+  if(!(n.config.prompt||'').trim()){
+    projectNodeId=n.id;renderProjects();
+    toast('先在右侧写提示词，再点「生成图片」');
+    return;
   }
   if(!pjChannelId||!pjModels.length)await pjEnsureModels();
-  if(run.status==='done'){
-    if(!confirm('这个 SKU 已完成，重新运行？'))return;
-    run.progress=0;run.states={};run.result=null;run.status='pending';
+  // 重新生成：清掉该节点及其之后的运行状态，但不影响其它节点参数
+  if(idx<run.progress||run.status==='done'||run.status==='failed'){
+    run.progress=idx;
+    Object.keys(run.states||{}).forEach(k=>{
+      const ni=pr.nodes.findIndex(x=>x.id===k);
+      if(ni>=idx)delete run.states[k];
+    });
+    run.result=null;run.error=null;
   }
+  run.status='running';run.current=n.id;run.states[n.id]='running';
+  projectSave();renderProjects();
   pjBusy=true;
   try{
-    while(run.progress<pr.nodes.length){
-      const n=pr.nodes[run.progress];
-      if(n.type==='human_review'){
-        run.states[n.id]='waiting';run.status='waiting';projectSave();renderProjects();
-        toast('已到人工确认：检查结果后点「确认通过并继续」');return;
-      }
-      if(n.type==='generate'||n.type==='refine'){
-        if(!(n.config.prompt||'').trim()){
-          run.states[n.id]='failed';run.status='failed';projectNodeId=n.id;projectSave();renderProjects();
-          toast('生成节点还没有提示词，已在右侧打开');return;
-        }
-        run.status='running';run.current=n.id;run.states[n.id]='running';projectSave();renderProjects();
-        const res=await pjGenerate(pr,n,sku);
-        const img=(res.images||[])[0]||{};
-        if(!img.url)throw new Error('渠道没有返回图片');
-        run.result={url:img.url,model:res.model||n.config.model,latency:res.latency_ms||0,
-          nodeId:n.id,at:now(),jobId:res.id};
-        run.states[n.id]='done';run.progress++;
-        projectSave();renderProjects();
-        continue;
-      }
-      run.states[n.id]='done';run.progress++;
-      if(n.type==='deliver'){run.status='done';break;}
-    }
-    if(run.progress>=pr.nodes.length)run.status='done';
+    const res=await pjGenerate(pr,n,sku);
+    const img=(res.images||[])[0]||{};
+    if(!img.url)throw new Error('渠道没有返回图片');
+    run.result={url:img.url,model:res.model||n.config.model,latency:res.latency_ms||0,
+      nodeId:n.id,at:now(),jobId:res.id};
+    run.states[n.id]='done';run.progress=Math.max(run.progress,idx+1);
+    pjAdvanceAuto(pr,run);
     projectSave();renderProjects();
-    if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('运行完成，结果已写入素材库');}
+    if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('流程完成，结果已写入素材库');}
+    else if(run.status==='waiting')toast('图片已生成，人工确认后再交付');
+    else toast('图片已生成');
   }catch(e){
     // 网关 502/超时但后台其实已经出图：找回最近一条带图的任务
-    const node=pr.nodes[run.progress];
     const recoverable=/50[24]|超时|TIMEOUT|Bad Gateway/i.test(e.message||'');
-    const rec=recoverable?await pjRecoverLast(node?.config?.prompt||''):null;
+    const rec=recoverable?await pjRecoverLast(n.config.prompt||''):null;
     if(rec){
-      run.result=rec;
-      if(run.current)run.states[run.current]='done';
-      run.progress=Math.min(pr.nodes.length,run.progress+1);
-      run.status=run.progress>=pr.nodes.length?'done':'pending';
-      run.error=null;
+      run.result=rec;run.states[n.id]='done';run.progress=Math.max(run.progress,idx+1);
+      pjAdvanceAuto(pr,run);run.error=null;
       projectSave();renderProjects();
       toast('网关超时，但已找回刚才生成的结果');
     }else{
-      run.status='failed';
-      run.error=e.message||'生成失败';
-      if(run.current)run.states[run.current]='failed';
+      run.status='failed';run.error=e.message||'生成失败';
+      run.states[n.id]='failed';
       projectSave();renderProjects();
       toast('生成失败：'+(e.message||'未知错误'));
     }
@@ -1528,12 +1532,18 @@ async function pjRunNext(){
     pjBusy=false;
   }
 }
+/* 人工确认通过后，自动把后面的交付节点走完 */
 function pjApprove(){
   const pr=projectCurrent();const run=pr&&pjRun(pr,projectSkuId);if(!pr||!run)return;
   const n=pr.nodes[run.progress];
   if(!n||n.type!=='human_review')return;
-  run.states[n.id]='done';run.progress++;run.status='pending';projectSave();pjRunNext();
+  run.states[n.id]='done';run.progress++;
+  pjAdvanceAuto(pr,run);
+  projectSave();renderProjects();
+  if(run.status==='done'){pjAddVersion(pr,projectSkuId,run.result);toast('已确认交付，结果已写入素材库');}
+  else toast('已通过人工确认');
 }
+
 async function pjRecoverLast(prompt){
   try{
     const res=await pjApi('/api/jobs?limit=5',{},15000);
@@ -1609,9 +1619,15 @@ function pjNodeSummary(n){
 }
 function pjInspector(pr,p,nodes,skuId){
   const n=nodes.find(x=>x.id===projectNodeId);if(!n)return '';
+  const run=pjRun(pr,skuId)||{states:{}};
+  const nodeDone=run.states?.[n.id]==='done';
   let body='';
   if(n.type==='generate'||n.type==='refine'){
-    body=`<div class="field"><label>提示词</label>
+    body=`<div class="flex" style="gap:8px;align-items:center;margin-bottom:10px">
+      <button type="button" class="btn btn-primary btn-sm" onclick="pjGenerateNode()">${nodeDone?'重新生成':'生成图片'}</button>
+      <span class="small muted">${nodeDone?'已生成，可改提示词后重新生成':'先写提示词，再点生成'}</span>
+    </div>
+    <div class="field"><label>提示词</label>
       <textarea class="textarea" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>
       <div class="row cols-2">
         <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">
@@ -1637,8 +1653,10 @@ function pjInspector(pr,p,nodes,skuId){
       <div class="field"><label>参数</label><input class="input" value="${esc(n.config.params||'')}" placeholder="如水印文字 / 裁剪比例" onchange="pjNodeConfig('params',this.value);renderProjects()"></div>
       <p class="small muted">只允许裁剪、拼接、加水印、换文字四种原子操作，不执行脚本。</p>`;
   }else if(n.type==='human_review'){
-    body=`<p class="small muted">运行到此节点会暂停，人工检查商品一致性、文字与合规后点「确认通过并继续」。</p>
-      <div class="flex" style="gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="pjApprove()">确认通过并继续</button></div>`;
+    const waiting=run.states?.[n.id]==='waiting';
+    body=waiting?`<p class="small muted">图片已生成，检查商品一致性、文字与合规后点「确认通过并继续」。</p>
+      <div class="flex" style="gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="pjApprove()">确认通过并继续</button></div>`
+      :`<p class="small muted">生成完成后会停在这里，等待人工确认；确认后自动走到交付。</p>`;
   }else if(n.type==='source'){
     const src=pr.sources?.[skuId];
     const fallback=(p.images||[])[0];
@@ -1688,7 +1706,6 @@ function renderProjects(){
   if(!pr.nodes.some(n=>n.id===projectNodeId))projectNodeId=pr.nodes.find(n=>n.type==='generate')?.id||pr.nodes[0]?.id||'';
   const run=pjRun(pr,projectSkuId)||{progress:0,status:'pending',states:{}};
   const sku=p.skus.find(s=>s.id===projectSkuId)||p.skus[0];
-  const genCount=pr.nodes.filter(n=>n.type==='generate').length;
   const nodeCards=pr.nodes.map((n,i)=>{
     const st=run.states?.[n.id]||'pending';
     return `${i?'<span class="pj-arrow" aria-hidden="true">→</span>':''}
@@ -1701,7 +1718,9 @@ function renderProjects(){
   }).join('');
   const skuOpts=p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===projectSkuId?'selected':''}>${esc(s.color)} ${esc(s.spec)}</option>`).join('');
   const st=pjProjectStatus(pr);
-  const runLabel=run.status==='waiting'?'确认通过并继续':run.status==='done'?'重新运行':'运行这个 SKU';
+  const selNode=pr.nodes.find(n=>n.id===projectNodeId);
+  const genNode=pr.nodes.find(n=>n.type==='generate'||n.type==='refine');
+  const genLabel=selNode&&(selNode.type==='generate'||selNode.type==='refine')&&run.states?.[selNode.id]==='done'?'重新生成':'生成图片';
   work.innerHTML=`<div class="project-stack">
     <div class="card"><div class="card-h"><h3>${esc(pr.name)}</h3>
       <span class="flex"><span class="pill ${st[0]}">${st[1]}</span><button class="btn btn-ghost btn-sm" onclick="projectDeleteCurrent()">删除项目</button></span></div>
@@ -1710,9 +1729,10 @@ function renderProjects(){
         <select class="select" style="width:auto" onchange="projectSelectSku(this.value)">${skuOpts}</select>`:''}
         <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||(p.images||[]).length)?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
-        <button class="btn btn-primary btn-sm" onclick="${run.status==='waiting'?'pjApprove()':'pjRunNext()'}">${runLabel}</button>
+        <button class="btn btn-primary btn-sm" onclick="pjGenerateNode()" ${genNode?'':'disabled'}>${genLabel}</button>
+        ${run.status==='waiting'?'<button type="button" class="btn btn-soft btn-sm" onclick="pjApprove()">确认通过并继续</button>':''}
         ${(run.status==='running'||run.status==='failed')?'<button type="button" class="btn btn-ghost btn-sm" onclick="pjResetRun()">重置运行</button>':''}
-        <span class="small muted">预计调用 ${genCount} 次模型 · 不显示金额</span>
+        <span class="small muted">先在生成节点写提示词，再点生成 · 不显示金额</span>
       </div>
       ${run.status==='failed'?`<div class="notice red" style="margin-top:10px">${esc(run.error||'上次运行失败，检查提示词与渠道后重试')}</div>`:''}
       </div></div>
@@ -1721,14 +1741,14 @@ function renderProjects(){
         <option value="generate">生成</option><option value="refine">精修</option><option value="process">处理</option><option value="quality_check">质检</option>
       </select><button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
       <div class="card-b"><div class="pj-canvas">${nodeCards}</div>
-      <p class="small muted" style="margin-top:10px">运行时按画布顺序执行；人工确认节点会暂停。改动画布会重置运行状态。</p></div></div>
+      <p class="small muted" style="margin-top:10px">生成是人工动作：先写提示词，再点「生成图片」；生成后停在人工确认，确认后自动走到交付。改动画布会重置运行状态。</p></div></div>
     ${((run.progress||0)>1||run.status==='waiting'||run.status==='done'||run.result)?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(sku?sku.color+' '+sku.spec:'')}</h3>${run.result?.url?'<span class="pill green">真实生成</span>':'<span class="pill gray">原型示意</span>'}</div>
       <div class="card-b"><div class="two-col" style="align-items:start">
         <div class="project-preview" style="height:auto;min-height:220px;margin:0;padding:8px">
           ${run.result?.url?`<img src="${esc(run.result.url)}" alt="生成结果">`:`${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span>`}
         </div>
         <div>${run.result?.url?`<p class="small">模型 <b>${esc(run.result.model||'—')}</b> · 耗时 ${run.result.latency||0}ms</p>
-          <p class="small muted">已写入素材库版本（待确认）。生成按渠道调用计费。</p>`:`<p class="small muted">生成节点还没跑：填好提示词并运行，这里会显示渠道返回的真实图片。</p>`}
+          <p class="small muted">已写入素材库版本（待确认）。生成按渠道调用计费。</p>`:`<p class="small muted">先在生成节点写提示词，再点「生成图片」；这里会显示渠道返回的真实图片。</p>`}
           <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div>
       </div></div></div>`:''}
     ${pjInspector(pr,p,pr.nodes,projectSkuId)}
