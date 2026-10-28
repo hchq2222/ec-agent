@@ -840,7 +840,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       <!-- ============ PAGE: SETTINGS ============ -->
       <section class="page" id="page-settings">
         <div class="page-head">
-          <div><h1>设置</h1><p>账号与权限、账单与额度、日志、模型中心、品牌与安全。MVP 单管理员；多用户与权限矩阵 V1 开放。</p></div>
+          <div><h1>设置</h1><p>账号与权限、回收站、日志、模型中心、品牌与安全。MVP 单管理员；多用户与权限矩阵 V1 开放。</p></div>
           <span class="pill green">系统正常</span>
         </div>
         <div class="settings">
@@ -1782,7 +1782,7 @@ function renderProductList(){
   $('product-count').textContent=`${list.length} / ${products.length} 个`;
   renderPendingBar();
   if(!list.length){
-    $('product-table').innerHTML='<div class="gs-empty" style="margin:16px"><div>没有匹配的商品<br><span class="small muted">调整筛选，或新建 / 链接导入</span></div></div>';
+    $('product-table').innerHTML='<div class="gs-empty" style="margin:16px"><div>没有匹配的商品<br><span class="small muted">调整筛选，或点右上角「AI 录入商品」</span></div></div>';
     return;
   }
   $('product-table').innerHTML=`<table class="product-table">
@@ -2469,8 +2469,11 @@ async function loadProductsFromApi(){
     if(!r.ok)return;
     const body=await r.json();
     let changed=false;
+    const trashed=new Set(protoTrash.filter(t=>t.type==='product').map(t=>t.id));
     (body.data||[]).forEach(d=>{
-      const p=mapApiProduct(d),i=products.findIndex(x=>x.id===p.id);
+      const p=mapApiProduct(d);
+      if(trashed.has(p.id))return; // 本地已删的商品，刷新时不要被 API 合并回来
+      const i=products.findIndex(x=>x.id===p.id);
       if(i>=0)products[i]=p;else products.unshift(p);
       changed=true;
     });
@@ -3111,7 +3114,7 @@ function renderExport(){
     </div>
     ${rows.length?`<table class="table"><thead><tr><th>目录 / 文件名</th><th>数量</th><th>尺寸</th><th>对应 SKU</th><th>合规</th></tr></thead><tbody>
       ${rows.map(r=>`<tr style="${r.p.affected?'opacity:.45':''}"><td class="mono small">${r.dir}${esc(r.file)}</td><td>${r.n}</td><td class="mono">${r.size}</td><td class="small">${esc(r.p.short)} · ${esc(r.skus)}</td><td><span class="pill green">导出合成</span></td></tr>`).join('')}</tbody></table>`
-      :'<div class="notice">还没有制作单完成的 SKU，先在任务中心跑完一套。</div>'}
+      :'<div class="notice">还没有完成的 SKU，先在项目画布里跑完一条流程。</div>'}
     <p class="small muted" style="margin-top:10px">母版不带标识；导出包合成角标 / 水印 / 元数据。尺寸为示例规格；文件名中的 SKU 为示例 id，正式版替换为 SKU 编码。</p>`;
 }
 function doExport(){
