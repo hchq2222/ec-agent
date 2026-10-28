@@ -1477,6 +1477,7 @@ function renderProjects(){
   if(!projectSkuId||!p.skus.some(s=>s.id===projectSkuId))projectSkuId=p.skus[0]?.id||'';
   if(!pr.nodes.some(n=>n.id===projectNodeId))projectNodeId=pr.nodes.find(n=>n.type==='generate')?.id||pr.nodes[0]?.id||'';
   const run=pjRun(pr,projectSkuId)||{progress:0,status:'pending',states:{}};
+  const sku=p.skus.find(s=>s.id===projectSkuId)||p.skus[0];
   const genCount=pr.nodes.filter(n=>n.type==='generate').length;
   const nodeCards=pr.nodes.map((n,i)=>{
     const st=run.states?.[n.id]||'pending';
@@ -1506,6 +1507,12 @@ function renderProjects(){
       </select><button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
       <div class="card-b"><div class="pj-canvas">${nodeCards}</div>
       <p class="small muted" style="margin-top:10px">运行时按画布顺序执行；人工确认节点会暂停。改动画布会重置运行状态。</p></div></div>
+    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done')?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(sku?sku.color+' '+sku.spec:'')}</h3><span class="pill gray">原型示意</span></div>
+      <div class="card-b"><div class="two-col" style="align-items:start">
+        <div class="project-preview" style="height:220px;margin:0">${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span></div>
+        <div><p class="small muted">真实生成还没接：当前运行只演示流程与状态，不调用模型、不产生图片。完成后会往素材库写一条版本。</p>
+          <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div>
+      </div></div></div>`:''}
     ${pjInspector(pr,p,pr.nodes)}
   </div>`;
 }
