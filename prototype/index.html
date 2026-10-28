@@ -1706,8 +1706,8 @@ function renderProjects(){
     <div class="card"><div class="card-h"><h3>${esc(pr.name)}</h3>
       <span class="flex"><span class="pill ${st[0]}">${st[1]}</span><button class="btn btn-ghost btn-sm" onclick="projectDeleteCurrent()">删除项目</button></span></div>
       <div class="card-b"><div class="flex" style="gap:10px;flex-wrap:wrap;align-items:center">
-        <span class="small muted">运行 SKU</span>
-        <select class="select" style="width:auto" onchange="projectSelectSku(this.value)">${skuOpts}</select>
+        ${p.skus.length>1?`<span class="small muted">运行 SKU</span>
+        <select class="select" style="width:auto" onchange="projectSelectSku(this.value)">${skuOpts}</select>`:''}
         <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||(p.images||[]).length)?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
         <button class="btn btn-primary btn-sm" onclick="${run.status==='waiting'?'pjApprove()':'pjRunNext()'}">${runLabel}</button>
