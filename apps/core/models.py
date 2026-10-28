@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -150,6 +150,7 @@ class Project(Base):
     status: Mapped[str] = mapped_column(String(24), default="draft", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProjectPlan(Base):
@@ -218,6 +219,7 @@ class Product(Base):
     source: Mapped[str] = mapped_column(String(24), default="ai_intake", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProductAttr(Base):
@@ -282,3 +284,36 @@ class ProductMessage(Base):
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     attachments: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class LayoutTemplate(Base):
+    """版式模板：尺寸、主体占比、阴影、文字槽位、Logo 位。
+
+    节点创建时把字段快照进节点参数，运行时不再读这张表；改模板只影响新项目。
+    """
+
+    __tablename__ = "layout_template"
+    __table_args__ = (
+        Index("ix_layout_template_category", "category"),
+        Index("ux_layout_template_builtin_key", "builtin_key", unique=True),
+        Index("ix_layout_template_deleted_at", "deleted_at"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), default="all", nullable=False)
+    size_w: Mapped[int] = mapped_column(Integer, default=800, nullable=False)
+    size_h: Mapped[int] = mapped_column(Integer, default=800, nullable=False)
+    subject_ratio: Mapped[float] = mapped_column(Float, default=0.85, nullable=False)
+    shadow: Mapped[str] = mapped_column(String(16), default="soft", nullable=False)
+    background: Mapped[str] = mapped_column(String(32), default="white", nullable=False)
+    text_slots: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    logo_slot: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    builtin_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

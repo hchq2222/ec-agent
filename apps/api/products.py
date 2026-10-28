@@ -7,9 +7,17 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
-from apps.core.models import Product, ProductAttr, ProductImage, ProductMessage, ProductSKU, utcnow
+from apps.core.models import (
+    Product,
+    ProductAttr,
+    ProductImage,
+    ProductMessage,
+    ProductSKU,
+    Project,
+    utcnow,
+)
 from apps.core.product_intake import ProductIntakeError, extract_product
 from apps.core.storage import build_object_key
 
@@ -81,7 +89,7 @@ async def product_out(session: Any, p: Product, *, include_messages: bool = Fals
 
 async def load_product(session: Any, product_id: uuid.UUID) -> Product:
     p = await session.get(Product, product_id)
-    if not p:
+    if not p or p.deleted_at is not None:
         raise HTTPException(404, "商品不存在")
     return p
 
@@ -243,7 +251,8 @@ async def list_products() -> dict[str, Any]:
     a = api()
     async with a.db.session() as session:
         rows = (await session.execute(
-            select(Product).order_by(Product.updated_at.desc()).limit(100)
+            select(Product).where(Product.deleted_at.is_(None))
+            .order_by(Product.updated_at.desc()).limit(100)
         )).scalars().all()
         return {"data": [await product_out(session, p) for p in rows]}
 
@@ -315,6 +324,38 @@ async def confirm_product(product_id: str) -> dict[str, Any]:
         p.updated_at = utcnow()
         await session.commit()
         return {"data": await product_out(session, p, include_messages=True)}
+
+
+@router.delete("/{product_id}")
+async def delete_product(product_id: str) -> dict[str, Any]:
+    """软删商品，并级联软删引用它的项目；原图与素材不做物理删除。"""
+    a = api()
+    async with a.db.session() as session:
+        p = await load_product(session, uid(product_id))
+        now = utcnow()
+        p.deleted_at = now
+        cascaded = await session.execute(
+            update(Project)
+            .where(Project.product_ref == str(p.id), Project.deleted_at.is_(None))
+            .values(deleted_at=now)
+        )
+        await session.commit()
+        return {"data": {"id": str(p.id), "deleted_at": now.isoformat(),
+                         "cascaded_projects": cascaded.rowcount or 0}}
+
+
+@router.post("/{product_id}/restore")
+async def restore_product(product_id: str) -> dict[str, Any]:
+    """恢复商品本身；级联删除的项目需要分别恢复。"""
+    a = api()
+    async with a.db.session() as session:
+        p = await session.get(Product, uid(product_id))
+        if not p:
+            raise HTTPException(404, "商品不存在")
+        p.deleted_at = None
+        p.updated_at = utcnow()
+        await session.commit()
+        return {"data": await product_out(session, p)}
 
 
 @router.get("/{product_id}/images/{image_id}/content")

@@ -167,7 +167,10 @@ async def create_project(payload: ProjectCreate) -> dict[str, Any]:
 async def list_projects() -> dict[str, Any]:
     a = api()
     async with a.db.session() as session:
-        rows = (await session.execute(select(Project).order_by(Project.created_at.desc()).limit(100))).scalars().all()
+        rows = (await session.execute(
+            select(Project).where(Project.deleted_at.is_(None))
+            .order_by(Project.created_at.desc()).limit(100)
+        )).scalars().all()
         return {"data": [project_out(p) for p in rows]}
 
 
@@ -176,7 +179,7 @@ async def get_project(project_id: str) -> dict[str, Any]:
     a = api()
     async with a.db.session() as session:
         p = await session.get(Project, uid(project_id))
-        if not p:
+        if not p or p.deleted_at is not None:
             raise HTTPException(404, "项目不存在")
         plans = (await session.execute(select(ProjectPlan).where(ProjectPlan.project_id == p.id)
                  .order_by(ProjectPlan.version.desc()))).scalars().all()
@@ -194,7 +197,7 @@ async def upload_source(project_id: str, sku_ref: str, request: Request) -> dict
     pid = uid(project_id)
     async with a.db.session() as session:
         p = await session.get(Project, pid)
-        if not p:
+        if not p or p.deleted_at is not None:
             raise HTTPException(404, "项目不存在")
         if sku_ref not in {s["id"] for s in p.product_snapshot["skus"]}:
             raise HTTPException(400, "SKU 不属于项目")
@@ -238,7 +241,7 @@ async def propose_plan(project_id: str) -> dict[str, Any]:
     a = api()
     async with a.db.session() as session:
         p = await session.get(Project, uid(project_id))
-        if not p:
+        if not p or p.deleted_at is not None:
             raise HTTPException(404, "项目不存在")
         if any(not fact.get("confirmed") for fact in p.product_snapshot["facts"].values()):
             raise HTTPException(409, "商品事实尚未全部确认")
@@ -259,7 +262,7 @@ async def edit_plan(project_id: str, plan_id: str, payload: PlanEdit) -> dict[st
         plan = (await session.execute(
             select(ProjectPlan).where(ProjectPlan.id == uid(plan_id)).with_for_update()
         )).scalar_one_or_none()
-        if not p or not plan or plan.project_id != p.id:
+        if not p or p.deleted_at is not None or not plan or plan.project_id != p.id:
             raise HTTPException(404, "项目或规划不存在")
         if plan.status != "draft":
             raise HTTPException(409, "已确认规划不能编辑")
@@ -283,7 +286,7 @@ async def confirm_plan(project_id: str, plan_id: str) -> dict[str, Any]:
         plan = (await session.execute(
             select(ProjectPlan).where(ProjectPlan.id == uid(plan_id)).with_for_update()
         )).scalar_one_or_none()
-        if not p or not plan or plan.project_id != p.id:
+        if not p or p.deleted_at is not None or not plan or plan.project_id != p.id:
             raise HTTPException(404, "项目或规划不存在")
         if plan.status != "draft":
             raise HTTPException(409, "规划已经确认")
@@ -323,7 +326,7 @@ async def create_run(project_id: str, payload: WorkflowCreate) -> dict[str, Any]
         plan = (await session.execute(
             select(ProjectPlan).where(ProjectPlan.id == uid(payload.plan_id)).with_for_update()
         )).scalar_one_or_none()
-        if not p or not plan or plan.project_id != p.id or plan.status != "confirmed":
+        if not p or p.deleted_at is not None or not plan or plan.project_id != p.id or plan.status != "confirmed":
             raise HTTPException(409, "必须先确认本项目的任务清单")
         for node in payload.graph["nodes"]:
             if node["type"] not in {"generate", "refine"}:
@@ -395,6 +398,8 @@ async def advance_run(project_id: str, run_id: str, gate: GateResult | None = No
         node = next(n for n in run.graph["nodes"] if n["id"] == order[run.cursor])
         kind = node["type"]
         project = await session.get(Project, pid)
+        if not project or project.deleted_at is not None:
+            raise HTTPException(404, "项目不存在")
         plan = await session.get(ProjectPlan, run.plan_id)
         item = next(i for i in plan.items if i["id"] == run.item_id)
         context = dict(run.context or {})
@@ -468,3 +473,29 @@ async def advance_run(project_id: str, run_id: str, gate: GateResult | None = No
         run.status = "succeeded" if run.cursor == len(order) else "pending"
         await session.commit()
         return {"data": await run_out_with_asset(session, run, a)}
+
+
+@router.delete("/{project_id}")
+async def delete_project(project_id: str) -> dict[str, Any]:
+    """软删项目；不动物料与计费流水。"""
+    a = api()
+    async with a.db.session() as session:
+        p = await session.get(Project, uid(project_id))
+        if not p or p.deleted_at is not None:
+            raise HTTPException(404, "项目不存在")
+        p.deleted_at = utcnow()
+        await session.commit()
+        return {"data": {"id": str(p.id), "deleted_at": p.deleted_at.isoformat()}}
+
+
+@router.post("/{project_id}/restore")
+async def restore_project(project_id: str) -> dict[str, Any]:
+    a = api()
+    async with a.db.session() as session:
+        p = await session.get(Project, uid(project_id))
+        if not p:
+            raise HTTPException(404, "项目不存在")
+        p.deleted_at = None
+        p.updated_at = utcnow()
+        await session.commit()
+        return {"data": project_out(p)}

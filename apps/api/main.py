@@ -685,3 +685,7 @@ from .projects import router as projects_router  # noqa: E402
 app.include_router(projects_router)
 from .products import router as products_router  # noqa: E402
 app.include_router(products_router)
+from .templates import router as templates_router  # noqa: E402
+app.include_router(templates_router)
+from .trash import router as trash_router  # noqa: E402
+app.include_router(trash_router)
