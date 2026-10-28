@@ -55,7 +55,7 @@ class OpenAICompatProvider:
         provider_id: str,
         base_url: str,
         api_key_env: str,
-        timeout_s: float = 180.0,
+        timeout_s: float = 300.0,
         client: httpx.AsyncClient | None = None,
         api_key: str | None = None,
     ) -> None:

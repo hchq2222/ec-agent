@@ -1286,14 +1286,19 @@ const PJ_ST={pending:['gray','待运行'],running:['blue','运行中'],waiting:[
 const PJ_MODELS=['img-gen-v1','img-gen-v2'];
 const PJ_PROCESS={crop:'裁剪',compose:'拼接',watermark:'加水印',replace_text:'换文字'};
 let pjChannels=[],pjModels=[],pjChannelId='',pjModelsLoaded=false,pjModelsPromise=null,pjBusy=false;
-async function pjApi(path,opts,timeout=180000){
+async function pjApi(path,opts,timeout=300000){
   const cfg=Object.assign({headers:{'Content-Type':'application/json'}},opts||{});
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),timeout);
   try{
     const r=await fetch(GS_API+path,{...cfg,signal:ctrl.signal});
-    let body=null;try{body=await r.json();}catch(e){}
-    if(!r.ok){const e=(body&&body.error)||{};throw new Error(`${e.code||('HTTP '+r.status)}：${e.message||'请求失败'}`);}
+    const text=await r.text();
+    let body=null;try{body=JSON.parse(text);}catch(e){}
+    if(!r.ok){
+      const e=(body&&body.error)||{};
+      const msg=e.message||(text?text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,160):'请求失败');
+      throw new Error(`${e.code||('HTTP '+r.status)}：${msg}`);
+    }
     return body;
   }catch(e){
     if(e.name==='AbortError')throw new Error(`请求超时（${Math.round(timeout/1000)}s）`);
@@ -1500,11 +1505,25 @@ async function pjRunNext(){
     projectSave();renderProjects();
     if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('运行完成，结果已写入素材库');}
   }catch(e){
-    run.status='failed';
-    run.error=e.message||'生成失败';
-    if(run.current)run.states[run.current]='failed';
-    projectSave();renderProjects();
-    toast('生成失败：'+(e.message||'未知错误'));
+    // 网关 502/超时但后台其实已经出图：找回最近一条带图的任务
+    const node=pr.nodes[run.progress];
+    const recoverable=/50[24]|超时|TIMEOUT|Bad Gateway/i.test(e.message||'');
+    const rec=recoverable?await pjRecoverLast(node?.config?.prompt||''):null;
+    if(rec){
+      run.result=rec;
+      if(run.current)run.states[run.current]='done';
+      run.progress=Math.min(pr.nodes.length,run.progress+1);
+      run.status=run.progress>=pr.nodes.length?'done':'pending';
+      run.error=null;
+      projectSave();renderProjects();
+      toast('网关超时，但已找回刚才生成的结果');
+    }else{
+      run.status='failed';
+      run.error=e.message||'生成失败';
+      if(run.current)run.states[run.current]='failed';
+      projectSave();renderProjects();
+      toast('生成失败：'+(e.message||'未知错误'));
+    }
   }finally{
     pjBusy=false;
   }
@@ -1514,6 +1533,21 @@ function pjApprove(){
   const n=pr.nodes[run.progress];
   if(!n||n.type!=='human_review')return;
   run.states[n.id]='done';run.progress++;run.status='pending';projectSave();pjRunNext();
+}
+async function pjRecoverLast(prompt){
+  try{
+    const res=await pjApi('/api/jobs?limit=5',{},15000);
+    const nowMs=Date.now();
+    const hit=(res.data||[]).find(j=>{
+      const im=(j.images||[])[0];
+      if(!im||!im.url)return false;
+      const t=new Date(j.created_at||0).getTime();
+      if(!t||nowMs-t>15*60*1000)return false;
+      return !prompt||!j.prompt||j.prompt.slice(0,80)===String(prompt).slice(0,80);
+    });
+    return hit?{url:hit.images[0].url,model:hit.model,latency:hit.latency_ms||0,
+      nodeId:'recovered',at:now(),jobId:hit.id,recovered:true}:null;
+  }catch(e){return null;}
 }
 function pjResetRun(){
   const pr=projectCurrent();if(!pr)return;
