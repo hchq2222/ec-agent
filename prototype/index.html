@@ -1285,11 +1285,66 @@ const PJ_TYPE={source:'商品原图',generate:'生成',refine:'精修',process:'
 const PJ_ST={pending:['gray','待运行'],running:['blue','运行中'],waiting:['amber','待确认'],done:['green','完成'],failed:['red','失败']};
 const PJ_MODELS=['img-gen-v1','img-gen-v2'];
 const PJ_PROCESS={crop:'裁剪',compose:'拼接',watermark:'加水印',replace_text:'换文字'};
+let pjChannels=[],pjModels=[],pjChannelId='',pjModelsLoaded=false,pjBusy=false;
+async function pjApi(path,opts){
+  const cfg=Object.assign({headers:{'Content-Type':'application/json'}},opts||{});
+  const r=await fetch(GS_API+path,cfg);
+  let body=null;try{body=await r.json();}catch(e){}
+  if(!r.ok){const e=(body&&body.error)||{};throw new Error(`${e.code||('HTTP '+r.status)}：${e.message||'请求失败'}`);}
+  return body;
+}
+async function pjEnsureModels(){
+  if(pjModelsLoaded)return;
+  pjModelsLoaded=true;
+  try{
+    const chans=await pjApi('/api/channels');
+    pjChannels=(chans.data||[]).filter(c=>c.enabled);
+    if(!pjChannels.length)throw new Error('未配置可用渠道');
+    pjChannelId=pjChannels[0].id;
+    const res=await pjApi('/api/models?channel_id='+encodeURIComponent(pjChannelId));
+    pjModels=(res.data||[]).filter(m=>m.kind==='image');
+    projectPrototypes.forEach(pr=>pr.nodes.forEach(n=>{
+      if(n.type==='generate'||n.type==='refine'){
+        if(!n.config.model||!pjModels.some(m=>m.key===n.config.model))n.config.model=pjModels[0]?.key||'';
+        if(!n.config.channelId)n.config.channelId=pjChannelId;
+      }
+    }));
+    projectSave();renderProjects();
+  }catch(e){
+    const hint=$('pj-model-hint');
+    if(hint)hint.textContent='渠道/模型读取失败：'+e.message;
+    renderProjects();
+  }
+}
+async function pjReferenceImage(p){
+  const url=(p.images||[])[0];
+  if(!url)return null;
+  try{
+    const r=await fetch(url);
+    if(!r.ok)return null;
+    const blob=await r.blob();
+    return await new Promise((resolve,reject)=>{
+      const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=reject;rd.readAsDataURL(blob);
+    });
+  }catch(e){return null;}
+}
+async function pjGenerate(pr,node,skuId){
+  const p=pById(pr.productId);
+  const channelId=node.config.channelId||pjChannelId;
+  const model=node.config.model||pjModels[0]?.key;
+  if(!channelId)throw new Error('没有可用渠道');
+  if(!model)throw new Error('没有可用生图模型');
+  const body={channel_id:channelId,model,prompt:node.config.prompt,n:1,
+    quality:node.config.quality||'auto',size:node.config.size||'1024x1024',output_format:'png'};
+  const ref=await pjReferenceImage(p);
+  if(ref)body.images=[ref];
+  return pjApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
+}
 function projectSave(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
 function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
 function pjDefaultNodes(){return [
   {id:'n_source',type:'source',label:'商品原图',config:{}},
-  {id:'n_gen',type:'generate',label:'生成图片',config:{prompt:'',model:'img-gen-v1',size:'1024x1024',templateId:'',template:null}},
+  {id:'n_gen',type:'generate',label:'生成图片',config:{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null}},
   {id:'n_review',type:'human_review',label:'人工确认',config:{}},
   {id:'n_deliver',type:'deliver',label:'交付',config:{}},
 ];}
@@ -1329,39 +1384,62 @@ function pjProjectStatus(pr){
   return ['gray','待运行'];
 }
 function pjRun(pr,sku){return (pr.runs||{})[sku]||null;}
-function pjAddVersion(pr,skuId){
+function pjAddVersion(pr,skuId,result){
   const p=pById(pr.productId),s=p?.skus.find(x=>x.id===skuId);if(!p||!s)return;
   versions.push({v:versions.length+1,price:0,title:p.short||p.name,bg:'white',status:'待确认',
+    img:result?.url||'',model:result?.model||'',
     note:`项目 ${pr.name} · ${s.color} ${s.spec}`,who:OPERATOR,at:now()});
   if(typeof renderVersions==='function')renderVersions();
   if(typeof renderAudit==='function')renderAudit();
 }
-function pjRunNext(){
+async function pjRunNext(){
+  if(pjBusy)return;
   const pr=projectCurrent(),p=pr&&pById(pr.productId);if(!pr||!p)return;
   const sku=projectSkuId||p.skus[0]?.id||'';
   if(!sku){toast('该商品还没有 SKU');return;}
   const run=pr.runs[sku]=pr.runs[sku]||{progress:0,status:'pending',states:{}};
+  if(run.status==='running')return;
   if(run.status==='done'){
     if(!confirm('这个 SKU 已完成，重新运行？'))return;
-    run.progress=0;run.states={};run.status='pending';
+    run.progress=0;run.states={};run.result=null;run.status='pending';
   }
-  while(run.progress<pr.nodes.length){
-    const n=pr.nodes[run.progress];
-    if(n.type==='human_review'){
-      run.states[n.id]='waiting';run.status='waiting';projectSave();renderProjects();
-      toast('已到人工确认：检查后点「确认通过并继续」');return;
+  pjBusy=true;
+  try{
+    while(run.progress<pr.nodes.length){
+      const n=pr.nodes[run.progress];
+      if(n.type==='human_review'){
+        run.states[n.id]='waiting';run.status='waiting';projectSave();renderProjects();
+        toast('已到人工确认：检查结果后点「确认通过并继续」');return;
+      }
+      if(n.type==='generate'||n.type==='refine'){
+        if(!(n.config.prompt||'').trim()){
+          run.states[n.id]='failed';run.status='failed';projectNodeId=n.id;projectSave();renderProjects();
+          toast('生成节点还没有提示词，已在右侧打开');return;
+        }
+        run.status='running';run.current=n.id;run.states[n.id]='running';projectSave();renderProjects();
+        const res=await pjGenerate(pr,n,sku);
+        const img=(res.images||[])[0]||{};
+        if(!img.url)throw new Error('渠道没有返回图片');
+        run.result={url:img.url,model:res.model||n.config.model,latency:res.latency_ms||0,
+          nodeId:n.id,at:now(),jobId:res.id};
+        run.states[n.id]='done';run.progress++;
+        projectSave();renderProjects();
+        continue;
+      }
+      run.states[n.id]='done';run.progress++;
+      if(n.type==='deliver'){run.status='done';break;}
     }
-    if(n.type==='generate'&&!(n.config.prompt||'').trim()){
-      run.states[n.id]='failed';run.status='failed';projectNodeId=n.id;projectSave();renderProjects();
-      toast('生成节点还没有提示词，已在右侧打开');return;
-    }
-    if(n.type==='generate'||n.type==='refine'){run.states[n.id]='running';}
-    run.states[n.id]='done';run.progress++;
-    if(n.type==='deliver'){run.status='done';break;}
+    if(run.progress>=pr.nodes.length)run.status='done';
+    projectSave();renderProjects();
+    if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('运行完成，结果已写入素材库');}
+  }catch(e){
+    run.status='failed';
+    if(run.current)run.states[run.current]='failed';
+    projectSave();renderProjects();
+    toast('生成失败：'+(e.message||'未知错误'));
+  }finally{
+    pjBusy=false;
   }
-  if(run.progress>=pr.nodes.length||run.status!=='done')run.status=run.progress>=pr.nodes.length?'done':'pending';
-  projectSave();renderProjects();
-  if(run.status==='done'){pjAddVersion(pr,sku);toast('运行完成（原型示意），结果已写入素材库');}
 }
 function pjApprove(){
   const pr=projectCurrent();const run=pr&&pjRun(pr,projectSkuId);if(!pr||!run)return;
@@ -1375,7 +1453,7 @@ function pjAddNode(){
   const id='n_'+Date.now();
   const config=type==='process'?{operation:'watermark',params:''}
     :type==='quality_check'?{}
-    :{prompt:'',model:'img-gen-v1',size:'1024x1024',templateId:'',template:null};
+    :{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null};
   const at=Math.max(1,pr.nodes.findIndex(n=>n.type==='human_review'));
   pr.nodes.splice(at,0,{id,type,label:PJ_TYPE[type],config});
   pr.runs={};projectNodeId=id;projectSave();renderProjects();toast('节点已添加，运行状态已重置');
@@ -1428,9 +1506,15 @@ function pjInspector(pr,p,nodes){
     body=`<div class="field"><label>提示词</label>
       <textarea class="textarea" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>
       <div class="row cols-2">
-        <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">${PJ_MODELS.map(m=>`<option ${m===n.config.model?'selected':''}>${m}</option>`).join('')}</select></div>
+        <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">
+          ${(pjModels.length?pjModels.map(m=>m.key):(n.config.model?[n.config.model]:[])).map(k=>`<option value="${esc(k)}" ${k===n.config.model?'selected':''}>${esc(k)}</option>`).join('')||'<option value="">未加载到模型</option>'}
+        </select><div class="small muted" id="pj-model-hint">${pjModels.length?`渠道 ${esc(pjChannels.find(c=>c.id===pjChannelId)?.name||'')} · ${pjModels.length} 个生图模型`:'正在读取渠道与模型…'}</div></div>
         <div class="field"><label>尺寸</label><input class="input" value="${esc(n.config.size||'')}" onchange="pjNodeConfig('size',this.value);renderProjects()"></div>
       </div>
+      <div class="field"><label>质量</label><select class="select" onchange="pjNodeConfig('quality',this.value);renderProjects()">
+        ${['auto','low','medium','high'].map(q=>`<option value="${q}" ${q===(n.config.quality||'auto')?'selected':''}>${{auto:'自动',low:'低',medium:'中',high:'高'}[q]}</option>`).join('')}
+      </select></div>
+      <p class="small muted">参考图：${(p.images||[]).length?'使用商品档案里的原图（图生图）':'商品没有原图，本次为纯文生图'}</p>
       <div class="field"><label>版式模板 <span class="small muted" style="font-weight:400">节点级，改动不影响其它节点</span></label>
         <select class="select" onchange="pjNodeTemplate(this.value)">
           <option value="">默认 1:1</option>
@@ -1460,6 +1544,7 @@ function pjInspector(pr,p,nodes){
 function renderProjects(){
   const sel=$('project-product-select'),list=$('project-list'),work=$('project-workspace');
   if(!sel||!list||!work)return;
+  if(!pjModelsLoaded)pjEnsureModels();
   const prev=sel.value;
   sel.innerHTML=products.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${p.skus.length} SKU</option>`).join('');
   if(pById(prev))sel.value=prev;else if(pById(projectCurrent()?.productId))sel.value=projectCurrent().productId;
@@ -1507,10 +1592,13 @@ function renderProjects(){
       </select><button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
       <div class="card-b"><div class="pj-canvas">${nodeCards}</div>
       <p class="small muted" style="margin-top:10px">运行时按画布顺序执行；人工确认节点会暂停。改动画布会重置运行状态。</p></div></div>
-    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done')?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(sku?sku.color+' '+sku.spec:'')}</h3><span class="pill gray">原型示意</span></div>
+    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done'||run.result)?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(sku?sku.color+' '+sku.spec:'')}</h3>${run.result?.url?'<span class="pill green">真实生成</span>':'<span class="pill gray">原型示意</span>'}</div>
       <div class="card-b"><div class="two-col" style="align-items:start">
-        <div class="project-preview" style="height:220px;margin:0">${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span></div>
-        <div><p class="small muted">真实生成还没接：当前运行只演示流程与状态，不调用模型、不产生图片。完成后会往素材库写一条版本。</p>
+        <div class="project-preview" style="height:auto;min-height:220px;margin:0;padding:8px">
+          ${run.result?.url?`<img src="${esc(run.result.url)}" alt="生成结果">`:`${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span>`}
+        </div>
+        <div>${run.result?.url?`<p class="small">模型 <b>${esc(run.result.model||'—')}</b> · 耗时 ${run.result.latency||0}ms</p>
+          <p class="small muted">已写入素材库版本（待确认）。生成按渠道调用计费。</p>`:`<p class="small muted">生成节点还没跑：填好提示词并运行，这里会显示渠道返回的真实图片。</p>`}
           <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div>
       </div></div></div>`:''}
     ${pjInspector(pr,p,pr.nodes)}
@@ -3060,7 +3148,7 @@ const verPill=s=>({'已确认':['green','已确认 · 交付版本'],'待确认'
 function renderVersions(){
   $('version-list').innerHTML=versions.filter(v=>!v.deleted).slice().reverse().map(v=>`
     <div class="prod-row">
-      <span style="width:54px;flex:none">${canvasComposite(v,54)}</span>
+      <span style="width:54px;flex:none">${v.img?`<img src="${esc(v.img)}" alt="素材 v${v.v}" style="width:54px;height:54px;object-fit:cover;border-radius:8px;display:block">`:canvasComposite(v,54)}</span>
       <span style="flex:1;min-width:0">
         <span class="flex"><span class="pill brand">v${v.v}</span><span class="pill ${verPill(v.status)[0]}">${verPill(v.status)[1]}</span></span>
         <span class="l-name" style="margin-top:4px">${esc(v.note)}</span>
