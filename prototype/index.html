@@ -136,7 +136,7 @@ a{color:inherit;text-decoration:none}
 .flow-arrow{color:#c3c8d4;font-size:16px;flex:none}
 
 /* Tag / pill */
-.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
 .pill.green{background:var(--green-soft);color:var(--green)}
 .pill.amber{background:var(--amber-soft);color:var(--amber)}
 .pill.red{background:var(--red-soft);color:var(--red)}
@@ -1052,6 +1052,14 @@ const yuan=n=>'¥'+n.toFixed(1);
 const sum=(arr,k)=>arr.reduce((s,x)=>s+x[k],0);
 const avgOf=(rows,k)=>rows.reduce((s,[,r])=>s+r[k],0)/rows.length;
 function now(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+/* 批次号精确到秒，并对同秒重复提交去重，避免产生重复 Job ID */
+function batchStamp(){
+  const d=new Date(),p=n=>String(n).padStart(2,'0');
+  const base=`${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  let stamp=base,n=1;
+  while(jobs.some(j=>j.parent==='B-'+stamp))stamp=`${base}-${++n}`;
+  return stamp;
+}
 const OPERATOR='运营·小林';
 let toastTimer;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
@@ -1209,6 +1217,7 @@ const PLAN=o=>DELIVERABLES.map(d=>({key:d.key,count:o[d.key]||0}));
 const FULL=()=>PLAN({white:1,scene:3,main:2,detail:2,video:1});
 const IMG8=()=>PLAN({white:1,scene:3,main:2,detail:2});
 let studioPlan=defaultPlan(), batchPlan=defaultPlan();
+let recentBatch=null; // 刚提交的批次，任务中心里高亮提示
 const planCost=p=>+p.reduce((n,x)=>n+x.count*DELIV[x.key].unit,0).toFixed(2);
 const planCount=p=>p.reduce((n,x)=>n+x.count,0);
 function planItems(sku,plan){
@@ -2257,20 +2266,27 @@ function saveStudioPlan(){
   audit.push({obj:`${p.name} · 制作单`,op:'保存制作单',from:'—',to:`${planCount(studioPlan)} 项 / 估算 ${yuan(planCost(studioPlan))}`,who:OPERATOR,at:now()});
   toast('制作单已保存（原型：不落库）');
 }
+let studioSubmitting=false;
 function submitStudioPlan(){
+  if(studioSubmitting)return;
   const p=pById(studioPid);
-  if(!p.skus.length){toast('该商品还没有 SKU，请先在商品档案补充');return;}
+  if(!p||!p.skus.length){toast('该商品还没有 SKU，请先在商品档案补充');return;}
   if(!planCount(studioPlan)){toast('至少选择 1 个交付项');return;}
   if(planCost(studioPlan)>BUDGET){toast(`单个 SKU 估算 ${yuan(planCost(studioPlan))}，超过 ¥${BUDGET} 硬上限`);return;}
-  const stamp=now().replace(/[- :]/g,'').slice(0,8);
+  const stamp=batchStamp();
   const parent='B-'+stamp, base='J-'+stamp;
   p.skus.forEach((s,i)=>{
     jobs.unshift({id:`${base}-${String(i+1).padStart(2,'0')}`,parent,
       name:`${p.short} · ${s.color} ${s.spec} · 制作单`,created:now(),
       plan:studioPlan.map(x=>({...x})),items:planItems(s.id,studioPlan)});
   });
+  studioSubmitting=true;
+  recentBatch=parent;
   refreshAll();
-  toast(`已提交 ${p.skus.length} 个 SKU，每个 SKU 一个 Job`);
+  go('tasks'); // 提交后直接看到新建的 Job，否则本页没有任何变化
+  toast(`已提交 ${p.skus.length} 个 SKU · 生成 ${p.skus.length} 个 Job（批次 ${parent}）`);
+  setTimeout(()=>{if(recentBatch===parent){recentBatch=null;renderTasks();}},10000);
+  setTimeout(()=>{studioSubmitting=false;},600);
 }
 
 function renderStudio(){
@@ -2604,10 +2620,11 @@ function renderTasks(){
     const doneItems=j.items.filter(i=>['成功','失败','已取消'].includes(i.status)).reduce((n,i)=>n+(i.count||1),0);
     const est=sum(j.items.filter(i=>i.status!=='已取消'),'est'), act=sum(j.items,'act');
     const canCancel=j.items.some(i=>ACTIVE.includes(i.status));
-    return `<div class="card" style="margin-bottom:10px;box-shadow:none"><div class="card-b" style="padding:12px 14px">
+    const isNew=!!j.parent&&j.parent===recentBatch;
+    return `<div class="card" style="margin-bottom:10px;box-shadow:none${isNew?';border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,70,229,.10)':''}"><div class="card-b" style="padding:12px 14px">
       <div class="flex" style="justify-content:space-between;margin-bottom:6px">
-        <span><b style="font-size:13px">${esc(j.name)}</b> <span class="small muted mono">${j.id} · ${j.created}${j.parent?` · 批次 ${j.parent}`:''}</span></span>
-        <span class="flex"><span class="pill ${ST_CLS[s]}">${s}</span>${canCancel?`<button type="button" class="btn btn-ghost btn-sm" onclick="cancelJob(${ji})">取消未完成项</button>`:''}</span>
+        <span style="min-width:0"><b style="font-size:13px">${esc(j.name)}</b> <span class="small muted mono">${j.id} · ${j.created}${j.parent?` · 批次 ${j.parent}`:''}</span></span>
+        <span class="flex" style="flex:none;gap:6px">${isNew?'<span class="pill brand">刚提交</span>':''}<span class="pill ${ST_CLS[s]}">${s}</span>${canCancel?`<button type="button" class="btn btn-ghost btn-sm" onclick="cancelJob(${ji})">取消未完成项</button>`:''}</span>
       </div>
       <div class="progress" role="progressbar" aria-valuenow="${doneItems}" aria-valuemin="0" aria-valuemax="${totalItems}" aria-label="已结束项"><i class="${s==='成功'?'green':s.includes('失败')?'amber':''}" style="width:${doneItems/totalItems*100}%"></i></div>
       <div class="flex small muted" style="justify-content:space-between;margin-top:6px"><span>${doneItems}/${totalItems} 个 JobItem 已结束 · ${j.items.length} 个交付项</span><span class="mono">估算 ${yuan(est)} · 实际 ${yuan(act)}</span></div>
@@ -2669,7 +2686,7 @@ function submitBatch(){
   const n=planCount(batchPlan), per=planCost(batchPlan);
   if(!picked.length||!n||per>BUDGET)return;
   if(picked.some(s=>!canGenerate(skuInfo(s).p)))return;
-  const stamp=now().replace(/[- :]/g,'').slice(0,8);
+  const stamp=batchStamp();
   const parent='B-'+stamp, base='J-'+stamp;
   picked.forEach((sid,i)=>{
     const info=skuInfo(sid);
@@ -2677,8 +2694,10 @@ function submitBatch(){
       name:`${info.p.short} · ${info.s.color} ${info.s.spec} · 批量`,created:now(),
       plan:batchPlan.map(x=>({...x})),items:planItems(sid,batchPlan)});
   });
-  closeModal('batch-modal');refreshAll();
+  recentBatch=parent;
+  closeModal('batch-modal');refreshAll();go('tasks');
   toast(`已提交 ${picked.length} 个 SKU（${picked.length} 个 Job），批次 ${parent}`);
+  setTimeout(()=>{if(recentBatch===parent){recentBatch=null;renderTasks();}},10000);
 }
 function openBatch(){renderBatch();openModal('batch-modal');}
 

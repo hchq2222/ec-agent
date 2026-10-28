@@ -173,6 +173,7 @@
 - ✅ **品类可输入**：`select` 改为 `input + datalist`，支持输入 key / 全名 / 忽略空格包含匹配；保存前解析为 `beauty|home|digital`，识别不了的文案会提示并阻止提交（后端仍是三枚举，未扩品类）。
 - ✅ **验证**：Edge 无头（`--headless=new --dump-dom`）实测列宽 `204/267/87/43`，参数列 +40px 生效且总和不变，单位列拖动下限 56px，刷新后列宽恢复；`3C配件→digital`、`食品饮料→null 拦截`；脚本语法检查通过。
 - ✅ **已部署**：上传到 `/opt/ec-agent-pro/app/prototype/index.html`，线上 md5 `e587188e8887a3c0f24637f7db301e5a` 与本地一致；`http://203.0.113.10:18080/` 返回 200，页面含 `pi-attr-table` / `col-grip` / `pi-cat-list`；旧文件备份为 `index.html.bak-20261028`。部署步骤与坑记在 `infrastructure/deploy.local.md`，SSH 凭据落在 `infrastructure/credentials.local.md`（gitignored，未提交）。
+- ✅ **制作台「提交生成」无反馈修复**：原来点完只弹 2.6s toast，制作台本身没有任何变化（Job 已进任务中心），看起来像没执行。现在提交后自动跳任务中心，新批次卡片品牌色描边 +「刚提交」标签高亮 10s，toast 带批次号；批次号精确到秒并去重（原来只到分钟，1 分钟内连点会产生重复 Job ID），另加 600ms 提交锁防连点。Edge 无头实测：双击只生成 3 个 Job、两次提交 ID 唯一、跳转与高亮正常。线上 md5 `a91a55e7239bc00205e0908d9448a2b0`，旧文件备份 `index.html.bak-20261028-studio`。
 
 ---
 
