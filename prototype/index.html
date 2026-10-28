@@ -1363,6 +1363,10 @@ async function pjSourceUpload(input){
     projectSave();renderProjects();toast('原图已保存，生成时会作为参考图');
   }catch(e){toast('图片读取失败');}
 }
+function pjPickSource(){
+  const a=$('pj-src-file'),b=$('pj-src-file-head');
+  (a||b)?.click();
+}
 function pjSourceRemove(){
   const pr=projectCurrent();if(!pr||!pr.sources)return;
   delete pr.sources[projectSkuId];
@@ -1585,7 +1589,7 @@ function pjInspector(pr,p,nodes,skuId){
       </div>`
       :'<div class="notice amber">这个 SKU 还没有原图。上传一张商品实拍图，生成时才会用它做参考；不上传就是纯文生图。</div>'}
       <div class="flex" style="gap:8px;margin-top:10px">
-        <label class="btn btn-primary btn-sm" for="pj-src-file">${src||fallback?'替换原图':'上传原图'}</label>
+        <button type="button" class="btn btn-primary btn-sm" onclick="pjPickSource()">${src||fallback?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file" accept="image/*" hidden onchange="pjSourceUpload(this)">
         ${src?'<button type="button" class="btn btn-ghost btn-sm" onclick="pjSourceRemove()">移除</button>':''}
       </div>
@@ -1641,6 +1645,8 @@ function renderProjects(){
       <div class="card-b"><div class="flex" style="gap:10px;flex-wrap:wrap;align-items:center">
         <span class="small muted">运行 SKU</span>
         <select class="select" style="width:auto" onchange="projectSelectSku(this.value)">${skuOpts}</select>
+        <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||(p.images||[]).length)?'替换原图':'上传原图'}</button>
+        <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
         <button class="btn btn-primary btn-sm" onclick="${run.status==='waiting'?'pjApprove()':'pjRunNext()'}">${runLabel}</button>
         <span class="small muted">预计调用 ${genCount} 次模型 · 不显示金额</span>
       </div></div></div>
