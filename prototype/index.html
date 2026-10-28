@@ -1286,12 +1286,21 @@ const PJ_ST={pending:['gray','待运行'],running:['blue','运行中'],waiting:[
 const PJ_MODELS=['img-gen-v1','img-gen-v2'];
 const PJ_PROCESS={crop:'裁剪',compose:'拼接',watermark:'加水印',replace_text:'换文字'};
 let pjChannels=[],pjModels=[],pjChannelId='',pjModelsLoaded=false,pjModelsPromise=null,pjBusy=false;
-async function pjApi(path,opts){
+async function pjApi(path,opts,timeout=180000){
   const cfg=Object.assign({headers:{'Content-Type':'application/json'}},opts||{});
-  const r=await fetch(GS_API+path,cfg);
-  let body=null;try{body=await r.json();}catch(e){}
-  if(!r.ok){const e=(body&&body.error)||{};throw new Error(`${e.code||('HTTP '+r.status)}：${e.message||'请求失败'}`);}
-  return body;
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),timeout);
+  try{
+    const r=await fetch(GS_API+path,{...cfg,signal:ctrl.signal});
+    let body=null;try{body=await r.json();}catch(e){}
+    if(!r.ok){const e=(body&&body.error)||{};throw new Error(`${e.code||('HTTP '+r.status)}：${e.message||'请求失败'}`);}
+    return body;
+  }catch(e){
+    if(e.name==='AbortError')throw new Error(`请求超时（${Math.round(timeout/1000)}s）`);
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
 }
 function pjEnsureModels(){
   if(pjModelsPromise)return pjModelsPromise;
@@ -1326,7 +1335,10 @@ async function pjReferenceImage(p,pr,skuId){
   const url=(p.images||[])[0];
   if(!url)return null;
   try{
-    const r=await fetch(url);
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),15000);
+    const r=await fetch(url,{signal:ctrl.signal});
+    clearTimeout(timer);
     if(!r.ok)return null;
     const blob=await r.blob();
     return await new Promise((resolve,reject)=>{
@@ -1386,6 +1398,13 @@ async function pjGenerate(pr,node,skuId){
 }
 function projectSave(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
 function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
+/* 页面刷新/请求中断后，持久化的「运行中」会永远卡住，启动时统一改成可重试的失败态 */
+projectPrototypes.forEach(pr=>{
+  Object.values(pr.runs||{}).forEach(r=>{
+    if(r.status==='running'){r.status='failed';r.error='上次运行中断（页面刷新或请求超时），点「重置运行」后可重试';}
+  });
+});
+projectSave();
 function pjDefaultNodes(){return [
   {id:'n_source',type:'source',label:'商品原图',config:{}},
   {id:'n_gen',type:'generate',label:'生成图片',config:{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null}},
@@ -1442,7 +1461,10 @@ async function pjRunNext(){
   const sku=projectSkuId||p.skus[0]?.id||'';
   if(!sku){toast('该商品还没有 SKU');return;}
   const run=pr.runs[sku]=pr.runs[sku]||{progress:0,status:'pending',states:{}};
-  if(run.status==='running')return;
+  if(run.status==='running'){
+    if(pjBusy)return;          // 真的有请求在跑
+    run.status='failed';       // 上次中断留下的假运行态，本次直接重试
+  }
   if(!pjChannelId||!pjModels.length)await pjEnsureModels();
   if(run.status==='done'){
     if(!confirm('这个 SKU 已完成，重新运行？'))return;
@@ -1479,6 +1501,7 @@ async function pjRunNext(){
     if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('运行完成，结果已写入素材库');}
   }catch(e){
     run.status='failed';
+    run.error=e.message||'生成失败';
     if(run.current)run.states[run.current]='failed';
     projectSave();renderProjects();
     toast('生成失败：'+(e.message||'未知错误'));
@@ -1491,6 +1514,12 @@ function pjApprove(){
   const n=pr.nodes[run.progress];
   if(!n||n.type!=='human_review')return;
   run.states[n.id]='done';run.progress++;run.status='pending';projectSave();pjRunNext();
+}
+function pjResetRun(){
+  const pr=projectCurrent();if(!pr)return;
+  const run=pr.runs?.[projectSkuId];if(!run)return;
+  run.progress=0;run.states={};run.status='pending';run.result=null;run.error=null;run.current=null;
+  projectSave();renderProjects();toast('运行状态已重置，可重新运行');
 }
 function pjAddNode(){
   const pr=projectCurrent();if(!pr)return;
@@ -1648,8 +1677,11 @@ function renderProjects(){
         <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||(p.images||[]).length)?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
         <button class="btn btn-primary btn-sm" onclick="${run.status==='waiting'?'pjApprove()':'pjRunNext()'}">${runLabel}</button>
+        ${(run.status==='running'||run.status==='failed')?'<button type="button" class="btn btn-ghost btn-sm" onclick="pjResetRun()">重置运行</button>':''}
         <span class="small muted">预计调用 ${genCount} 次模型 · 不显示金额</span>
-      </div></div></div>
+      </div>
+      ${run.status==='failed'?`<div class="notice red" style="margin-top:10px">${esc(run.error||'上次运行失败，检查提示词与渠道后重试')}</div>`:''}
+      </div></div>
     <div class="card"><div class="card-h"><h3>画布</h3>
       <span class="flex"><select class="select" id="pj-add-type" style="width:auto">
         <option value="generate">生成</option><option value="refine">精修</option><option value="process">处理</option><option value="quality_check">质检</option>
