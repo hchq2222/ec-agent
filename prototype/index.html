@@ -602,13 +602,13 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
           <div class="card-h"><h3>制作单 · 自由选择</h3><span class="sub">不预设 8 位；每个 SKU 一个 Job；选中项全部 final 才能定稿</span><span class="pill gray" id="studio-plan-budget">—</span></div>
           <div class="card-b">
             <div id="studio-plan-editor"></div>
-            <p class="small muted" style="margin-top:6px">数量填 0 即不交付；按张/条计费，单个 SKU 超出 ¥18 硬上限会阻断提交。</p>
+            <p class="small muted" style="margin-top:6px">数量填 0 即不交付；按张/条计费，单个 SKU 超出 ¥18 硬上限会阻断提交。确认后带着商品与交付项去生图工作台，写提示词再生图。</p>
             <div class="flex" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px">
               <span class="small muted" id="studio-plan-summary"></span>
               <span class="flex">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="resetStudioPlan()">恢复示例清单</button>
                 <button type="button" class="btn btn-ghost btn-sm" onclick="saveStudioPlan()">保存制作单</button>
-                <button type="button" class="btn btn-primary btn-sm" id="studio-plan-submit" onclick="submitStudioPlan()">提交生成</button>
+                <button type="button" class="btn btn-primary btn-sm" id="studio-plan-submit" onclick="submitStudioPlan()">去生图工作台 →</button>
               </span>
             </div>
           </div>
@@ -638,6 +638,23 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
               <span class="pill gray" id="gs-api-state">检测中</span>
             </div>
             <div class="gs-scroll">
+              <div class="notice blue" id="gs-ctx" hidden>
+                <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:10px">
+                  <div style="min-width:0">
+                    <b>来自制作台</b>
+                    <div class="small" id="gs-ctx-text" style="margin-top:4px"></div>
+                    <div class="flex" style="gap:8px;margin-top:8px;align-items:center">
+                      <label for="gs-ctx-sku" class="small" style="font-weight:600;margin:0">SKU</label>
+                      <select class="select" id="gs-ctx-sku" style="width:auto;min-width:120px" onchange="gsApplyCtxPrompt()"></select>
+                    </div>
+                  </div>
+                  <span class="flex" style="flex:none;gap:6px">
+                    <button type="button" class="btn btn-ghost btn-sm" title="回到制作台" onclick="gsBackToStudio()">← 返回</button>
+                    <button type="button" class="btn btn-ghost btn-sm" title="清除制作单上下文" onclick="gsClearContext()">清除</button>
+                  </span>
+                </div>
+              </div>
+
               <div class="field">
                 <label for="gs-prompt">提示词</label>
                 <textarea class="textarea" id="gs-prompt" rows="4" placeholder="描述画面主体、风格、构图、光线和用途"></textarea>
@@ -2266,27 +2283,16 @@ function saveStudioPlan(){
   audit.push({obj:`${p.name} · 制作单`,op:'保存制作单',from:'—',to:`${planCount(studioPlan)} 项 / 估算 ${yuan(planCost(studioPlan))}`,who:OPERATOR,at:now()});
   toast('制作单已保存（原型：不落库）');
 }
-let studioSubmitting=false;
 function submitStudioPlan(){
-  if(studioSubmitting)return;
   const p=pById(studioPid);
   if(!p||!p.skus.length){toast('该商品还没有 SKU，请先在商品档案补充');return;}
   if(!planCount(studioPlan)){toast('至少选择 1 个交付项');return;}
   if(planCost(studioPlan)>BUDGET){toast(`单个 SKU 估算 ${yuan(planCost(studioPlan))}，超过 ¥${BUDGET} 硬上限`);return;}
-  const stamp=batchStamp();
-  const parent='B-'+stamp, base='J-'+stamp;
-  p.skus.forEach((s,i)=>{
-    jobs.unshift({id:`${base}-${String(i+1).padStart(2,'0')}`,parent,
-      name:`${p.short} · ${s.color} ${s.spec} · 制作单`,created:now(),
-      plan:studioPlan.map(x=>({...x})),items:planItems(s.id,studioPlan)});
-  });
-  studioSubmitting=true;
-  recentBatch=parent;
-  refreshAll();
-  go('tasks'); // 提交后直接看到新建的 Job，否则本页没有任何变化
-  toast(`已提交 ${p.skus.length} 个 SKU · 生成 ${p.skus.length} 个 Job（批次 ${parent}）`);
-  setTimeout(()=>{if(recentBatch===parent){recentBatch=null;renderTasks();}},10000);
-  setTimeout(()=>{studioSubmitting=false;},600);
+  // 制作单确认后不做假 Job，带着商品 / SKU / 交付项去生图工作台写提示词
+  const ctx={pid:studioPid,skuIds:p.skus.map(s=>s.id),plan:studioPlan.map(x=>({...x})),step:studioStep};
+  go('genstudio');
+  gsEnterFromStudio(ctx);
+  toast('制作单已带入，确认提示词后点「生成图片」');
 }
 
 function renderStudio(){
@@ -3351,6 +3357,79 @@ function gsFmtTime(iso){
 }
 function gsEmpty(html){
   $('gs-results').innerHTML=`<div class="gs-empty"><div><div style="font-size:34px;line-height:1">🖼</div><p style="margin-top:10px">${html||'还没有生成图片'}</p></div></div>`;
+}
+/* ============ 制作台 → 生图工作台 ============ */
+let gsCtx=null;
+function studioCtxSkuId(){
+  if(!gsCtx)return null;
+  const sel=$('gs-ctx-sku'), v=sel&&sel.value;
+  return gsCtx.skuIds.includes(v)?v:gsCtx.skuIds[0];
+}
+function studioPrompt(p,ctx,sku){
+  const cat=CATS[p.cat]||CATS.home;
+  const scene=(cat.scenes[sceneSel]&&cat.scenes[sceneSel][1])||'生活';
+  const usages=ctx.plan.filter(x=>x.count>0).map(x=>`${DELIV[x.key].label}×${x.count}`).join('、');
+  const attrs=Object.entries(p.fields||{}).filter(([k,f])=>f&&f.v&&f.src==='human').slice(0,6).map(([k,f])=>`${k} ${f.v}`).join('，');
+  const shot=ctx.step===0?'纯白底商品图：纯白背景、商品完整居中、柔和接地阴影，不加文字与贴片'
+    :ctx.step===1?`${scene}场景图：保留商品本体，只替换背景与光线`
+    :ctx.step===2?'电商主图：构图干净、主体突出、留白合理，文字需可独立替换'
+    :'竖版展示画面（9:16），作为 15s 视频的起始帧';
+  return [
+    `商品：${p.brand?p.brand+' ':''}${p.name}${sku?`（${sku.color} ${sku.spec}）`:''}`,
+    p.pitch?`卖点：${p.pitch}`:'',
+    attrs?`已确认参数：${attrs}`:'',
+    `用途：${shot}`,
+    `本次交付：${usages||'按制作单'}`,
+    '要求：商品一致性优先，保持形状、颜色、比例、Logo 与标签文字不变，不重绘商品细节；只调整背景、光线与构图。',
+  ].filter(Boolean).join('\n');
+}
+function gsApplyCtxPrompt(){
+  if(!gsCtx)return;
+  const p=pById(gsCtx.pid), sku=p&&p.skus.find(s=>s.id===studioCtxSkuId());
+  const ta=$('gs-prompt');
+  if(p&&ta){ta.value=studioPrompt(p,gsCtx,sku);ta.scrollTop=0;ta.setSelectionRange(0,0);}
+}
+async function gsAttachProductImage(p){
+  const url=(p.images||[])[0];
+  if(!url||gs.refs.some(r=>r.src===url))return;
+  try{
+    const r=await fetch(url);
+    if(!r.ok)return;
+    const blob=await r.blob();
+    const dataUrl=await new Promise((resolve,reject)=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=reject;rd.readAsDataURL(blob);});
+    gs.refs.push({name:'商品原图',dataUrl,src:url});
+    gsRenderRefs();
+  }catch(e){/* 跨域或离线时静默跳过，用户可手动上传参考图 */}
+}
+async function gsEnterFromStudio(ctx){
+  gsCtx=ctx;
+  const p=pById(ctx.pid);
+  const bar=$('gs-ctx'), txt=$('gs-ctx-text'), sel=$('gs-ctx-sku');
+  if(p&&bar&&txt&&sel){
+    const dl=ctx.plan.filter(x=>x.count>0).map(x=>`${DELIV[x.key].label}×${x.count}`).join('、');
+    txt.innerHTML=`<b>${esc(p.name)}</b> · ${ctx.skuIds.length} SKU<br>${esc(dl)}<br><span class="muted">提示词可改；结果进左侧「生成记录」</span>`;
+    sel.innerHTML=p.skus.filter(s=>ctx.skuIds.includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.color)} ${esc(s.spec)}</option>`).join('');
+    bar.hidden=false;
+  }
+  gsApplyCtxPrompt();
+  const stepKey=['white','scene','main','video'][ctx.step];
+  const row=ctx.plan.find(x=>x.key===stepKey);
+  gsClickSeg('gs-ratio',ctx.step===3?'9:16':'1:1');
+  if(row&&[1,2,4].includes(row.count))gsClickSeg('gs-n',String(row.count));
+  if(p)gsAttachProductImage(p);
+  const ta=$('gs-prompt');if(ta){ta.rows=6;ta.focus();}
+}
+function gsClickSeg(id,val){
+  const el=$(id);if(!el)return;
+  const b=[...el.querySelectorAll('button')].find(x=>x.dataset.v===String(val));
+  if(b)b.click();
+}
+function gsBackToStudio(){go('studio');}
+function gsClearContext(silent){
+  gsCtx=null;
+  const bar=$('gs-ctx');if(bar)bar.hidden=true;
+  const ta=$('gs-prompt');if(ta)ta.rows=4;
+  if(!silent)toast('已清除制作单上下文');
 }
 function gsNew(){
   $('gs-prompt').value='';
