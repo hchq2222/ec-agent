@@ -166,6 +166,14 @@
 - ✅ **状态复核**：使用 `.venv\Scripts\python.exe -m pytest -q` 复跑 11 项单测，全部通过（MockTransport，无渠道请求）；顶部项目状态已与现有代码记录对齐。
 - ⬜ **未做**：前端原型接真实接口、图生图实测、计费口径回填。
 
+### 2026-10-28 · 录入弹窗交互打磨
+
+- ✅ **参数表列宽可拖动**：`prototype/index.html` 的「商品参数」表改为 `table-layout:fixed` + 列线拖拽，参数列过窄（70.9px）与单位列只剩 23.6px 的问题一并解决；列宽存 `localStorage`（`pi.attrColWidths`），下次打开沿用，单位列最小 56px、操作列最小 40px。
+- ✅ **单位可正常填写**：确认输入框本身没有 `readonly/disabled`，此前不可填是列宽被压到 23.6px 导致；固定布局后默认约 87px。
+- ✅ **品类可输入**：`select` 改为 `input + datalist`，支持输入 key / 全名 / 忽略空格包含匹配；保存前解析为 `beauty|home|digital`，识别不了的文案会提示并阻止提交（后端仍是三枚举，未扩品类）。
+- ✅ **验证**：Edge 无头（`--headless=new --dump-dom`）实测列宽 `204/267/87/43`，参数列 +40px 生效且总和不变，单位列拖动下限 56px，刷新后列宽恢复；`3C配件→digital`、`食品饮料→null 拦截`；脚本语法检查通过。
+- 🟡 **未部署**：`http://203.0.113.10:18080/` 仍是旧版本；本机缺 `infrastructure/credentials.local.md`，SSH 只有密码认证，待补凭据或由有权限的人同步 `prototype/index.html`。
+
 ---
 
 ## 六、待决事项

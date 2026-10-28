@@ -152,6 +152,18 @@ a{color:inherit;text-decoration:none}
 .table tr:hover td{background:#fafbfc}
 .plan-table td{padding:7px 8px}
 .plan-table input[type=number]{width:76px}
+/* 参数表：固定布局 + 可拖动列宽（宽度存 localStorage，下次打开沿用） */
+.table.attr-table{table-layout:fixed}
+.table.attr-table th{position:relative;padding-right:18px}
+.table.attr-table th:last-child{padding-right:6px}
+.table.attr-table td{padding:7px 8px}
+.table.attr-table td:last-child{padding:7px 4px;text-align:center}
+.table.attr-table .input{min-width:0}
+.col-grip{position:absolute;top:0;right:3px;width:11px;height:100%;cursor:col-resize;touch-action:none;z-index:2}
+.col-grip::after{content:"";position:absolute;left:5px;top:7px;bottom:7px;width:1px;background:var(--line);transition:.15s}
+.col-grip:hover::after{background:var(--brand);width:2px;left:4px}
+.col-grip.dragging::after{background:var(--brand);width:2px;left:4px}
+body.col-resizing{cursor:col-resize;user-select:none}
 .pi-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
 .pi-chat,.pi-draft{min-width:0}
 .pi-messages{height:260px;overflow:auto;background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
@@ -223,6 +235,7 @@ button.scene:hover{border-color:var(--brand)}
 .modal-back{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;place-items:center;z-index:50;padding:20px}
 .modal-back.open{display:grid}
 .modal{background:#fff;border-radius:14px;width:min(760px,94vw);max-height:90vh;overflow:auto;box-shadow:var(--shadow-lg);animation:pop .2s ease}
+.modal-wide{width:min(1080px,96vw)}
 @keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 .modal-h{padding:16px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2}
 .modal-h h3{font-size:16px}
@@ -963,7 +976,7 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 </div>
 
 <div class="modal-back" id="intake-modal">
-  <div class="modal" style="max-width:980px" role="dialog" aria-modal="true" aria-labelledby="pi-title">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="pi-title">
     <div class="modal-h"><h3 id="pi-title">AI 录入商品</h3><span class="pill brand">图片 / PDF / 文字</span><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="closeModal('intake-modal')">✕</button></div>
     <div class="modal-b">
       <div class="pi-grid">
@@ -1898,15 +1911,25 @@ function piRenderDraft(d){
     <div class="card-b">
       <div class="row cols-2">
         <div class="field"><label for="pi-name">商品名称</label><input class="input" id="pi-name" value="${esc(d.name||'')}"></div>
-        <div class="field"><label for="pi-cat">品类</label><select class="select" id="pi-cat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===cat?'selected':''}>${v.name}</option>`).join('')}</select></div>
+        <div class="field"><label for="pi-cat">品类</label>
+          <input class="input" id="pi-cat" list="pi-cat-list" value="${esc(CATS[cat]?.name||CATS.beauty.name)}" placeholder="选择或输入，如 美妆个护" autocomplete="off">
+          <datalist id="pi-cat-list">${Object.entries(CATS).map(([k,v])=>`<option value="${v.name}">${v.name}</option>`).join('')}</datalist>
+        </div>
       </div>
       <div class="row cols-2">
         <div class="field"><label for="pi-brand">品牌</label><input class="input" id="pi-brand" value="${esc(d.brand||'')}"></div>
         <div class="field"><label for="pi-code">商品编码</label><input class="input mono" id="pi-code" value="${esc(d.code||'')}" placeholder="可留空"></div>
       </div>
       <div class="field"><label for="pi-pitch">卖点</label><textarea class="textarea" id="pi-pitch" rows="2">${esc(d.pitch||'')}</textarea></div>
-      <div class="field"><label>商品参数 <span class="small muted" style="font-weight:400">AI 整理，可改</span></label>
-        <table class="table"><thead><tr><th style="width:32%">参数</th><th>值</th><th style="width:16%">单位</th><th style="width:40px"></th></tr></thead><tbody id="pi-attrs"></tbody></table>
+      <div class="field"><label>商品参数 <span class="small muted" style="font-weight:400">AI 整理，可改；拖动列线可调列宽</span></label>
+        <table class="table attr-table" id="pi-attr-table">
+          <colgroup><col style="width:34%"><col><col style="width:90px"><col style="width:44px"></colgroup>
+          <thead><tr>
+            <th>参数<span class="col-grip" data-col="0" title="拖动调整列宽"></span></th>
+            <th>值<span class="col-grip" data-col="1" title="拖动调整列宽"></span></th>
+            <th>单位<span class="col-grip" data-col="2" title="拖动调整列宽"></span></th>
+            <th></th>
+          </tr></thead><tbody id="pi-attrs"></tbody></table>
         <button type="button" class="btn btn-ghost btn-sm" onclick="piAddAttr()">＋ 添加参数</button>
       </div>
       <div class="field"><label>SKU</label>
@@ -1920,6 +1943,57 @@ function piRenderDraft(d){
       </div>
     </div></div>`;
   piRenderAttrRows();piRenderSkuRows();
+  piApplyAttrColWidths();piBindAttrResize();
+}
+const PI_ATTR_COLS_KEY='pi.attrColWidths';
+function piAttrCols(){const t=$('pi-attr-table');return t?[...t.querySelectorAll('colgroup col')]:[];}
+function piSetAttrColWidths(pcts){
+  piAttrCols().forEach((c,i)=>{if(pcts[i]>0)c.style.width=pcts[i].toFixed(3)+'%';});
+}
+function piApplyAttrColWidths(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(PI_ATTR_COLS_KEY)||'null');}catch(e){saved=null;}
+  if(!Array.isArray(saved)||saved.length!==4)return;
+  const sum=saved.reduce((a,b)=>a+(Number(b)>0?Number(b):0),0);
+  if(sum<99||sum>101)return;
+  piSetAttrColWidths(saved.map(Number));
+}
+function piBindAttrResize(){
+  const table=$('pi-attr-table');if(!table)return;
+  table.querySelectorAll('.col-grip').forEach(grip=>{
+    grip.addEventListener('pointerdown',ev=>{
+      ev.preventDefault();
+      const i=Number(grip.dataset.col),cols=piAttrCols();
+      const ths=[...table.querySelectorAll('thead th')];
+      if(cols.length!==4||ths.length!==4)return;
+      const widths=ths.map(th=>th.getBoundingClientRect().width);
+      const sum=widths.reduce((a,b)=>a+b,0);
+      if(!sum)return;
+      // 单位列是最窄的可编辑列，至少留 56px；操作列至少 40px
+      const minA=i===2?56:64, minB=i===2?40:80;
+      const startX=ev.clientX,startA=widths[i],startB=widths[i+1];
+      let moved=false;
+      const move=e=>{
+        moved=true;
+        const a=Math.max(minA,Math.min(startA+(e.clientX-startX),startA+startB-minB));
+        const next=widths.map((w,k)=>k===i?a:k===i+1?startA+startB-a:w);
+        piSetAttrColWidths(next.map(w=>w/sum*100));
+      };
+      const up=()=>{
+        window.removeEventListener('pointermove',move);
+        window.removeEventListener('pointerup',up);
+        window.removeEventListener('pointercancel',up);
+        grip.classList.remove('dragging');document.body.classList.remove('col-resizing');
+        if(moved){
+          try{localStorage.setItem(PI_ATTR_COLS_KEY,JSON.stringify(cols.map(c=>Number.parseFloat(c.style.width)||0)));}catch(e){}
+        }
+      };
+      grip.classList.add('dragging');document.body.classList.add('col-resizing');
+      window.addEventListener('pointermove',move);
+      window.addEventListener('pointerup',up);
+      window.addEventListener('pointercancel',up);
+    });
+  });
 }
 function piRenderAttrRows(){
   const rows=(piDraftData&&piDraftData.attrs)||[];
@@ -1937,10 +2011,22 @@ function piRenderSkuRows(){
     <td><input class="input pi-sku-price" value="${s.price??''}" placeholder="129" inputmode="decimal"></td>
     <td><button type="button" class="btn btn-ghost btn-sm" onclick="piRemoveSku(${i})" aria-label="删除">×</button></td></tr>`).join('');
 }
+/* 品类可输入：支持 key / 全名 / 包含匹配，返回 null 表示无法识别 */
+function piCategoryKey(raw,fallback){
+  const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+  const t=norm(raw);
+  if(!t)return fallback||null;
+  if(CATS[t])return t;
+  const byName=Object.entries(CATS).find(([k,v])=>norm(v.name)===t);
+  if(byName)return byName[0];
+  const fuzzy=Object.entries(CATS).find(([k,v])=>t.includes(norm(v.name))||norm(v.name).includes(t));
+  return fuzzy?fuzzy[0]:(fallback||null);
+}
 function piSyncDraft(){
   if(!piDraftData)return;
   piDraftData.name=$('pi-name')?.value.trim()||'';
-  piDraftData.category=$('pi-cat')?.value||'beauty';
+  const catKey=piCategoryKey($('pi-cat')?.value);
+  if(catKey)piDraftData.category=catKey;
   piDraftData.brand=$('pi-brand')?.value.trim()||'';
   piDraftData.code=$('pi-code')?.value.trim()||'';
   piDraftData.pitch=$('pi-pitch')?.value.trim()||'';
@@ -1962,9 +2048,17 @@ function piRemoveSku(i){piSyncDraft();piDraftData.skus.splice(i,1);piRenderSkuRo
 async function piSave(confirmed){
   if(!piProductId)return;
   piSyncDraft();
+  // 品类仍是三选一（后端枚举），这里把输入值解析成 key；识别不了就不提交
+  const catKey=piCategoryKey($('pi-cat')?.value);
+  if(!catKey){
+    toast(`品类暂只支持：${Object.values(CATS).map(v=>v.name).join(' / ')}`);
+    const el=$('pi-cat');if(el){el.focus();el.select();}
+    return;
+  }
+  piDraftData.category=catKey;
   const payload={
     name:piDraftData.name||'未命名商品',
-    category:piDraftData.category||'beauty',
+    category:catKey,
     brand:piDraftData.brand||'',
     code:piDraftData.code||'',
     pitch:piDraftData.pitch||'',
