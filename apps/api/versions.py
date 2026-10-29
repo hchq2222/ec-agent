@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from apps.core.models import AssetVersion, CanvasProject, utcnow
 
@@ -131,7 +132,8 @@ async def rollback_version(version_id: str) -> dict[str, Any]:
                 project.status = "active"
                 project.hidden = False
                 project.delivered_at = None
-                project.canvas = reset_review_states(dict(project.canvas or {}))
+                project.canvas = reset_review_states(project.canvas or {})
+                flag_modified(project, "canvas")
                 project.updated_at = utcnow()
         await session.commit()
         return {"data": {"version": out(v), "project": project_out(project) if project else None}}

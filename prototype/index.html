@@ -1604,22 +1604,27 @@ function saveProjectsLocal(){try{localStorage.setItem('proto.projects2',JSON.str
 const pjSyncTimers={};
 function cancelProjectSync(id){if(pjSyncTimers[id]){clearTimeout(pjSyncTimers[id]);delete pjSyncTimers[id];}}
 async function syncProject(pr){
-  const body={name:pr.name,canvas:canvasOf(pr),base_updated_at:pr._updatedAt||undefined};
+  const upsert=async()=>{
+    const res=await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+      id:pr.id,product_ref:pr.productId,name:pr.name,canvas:canvasOf(pr),
+    })});
+    if(res?.data?.updated_at){pr._updatedAt=res.data.updated_at;pr._provisional=false;}
+  };
+  // 新项目还没从服务器拿到 updated_at 时先走 upsert，之后一律带乐观锁
+  if(pr._provisional||!pr._updatedAt){
+    try{await upsert();}catch(e){}
+    return;
+  }
   try{
-    const res=await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify(body)});
+    const res=await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify({
+      name:pr.name,canvas:canvasOf(pr),base_updated_at:pr._updatedAt,
+    })});
     if(res?.data?.updated_at)pr._updatedAt=res.data.updated_at;
   }catch(e){
-    if(/HTTP 409|已在其它页面更新/.test(e.message||'')){
+    if(/HTTP 409|已在其它页面更新|缺少 base_updated_at/.test(e.message||'')){
       toast('项目已在其它页面更新，已刷新为服务器状态');
       await loadCanvasProjects();
-      return;
     }
-    try{
-      const res=await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
-        id:pr.id,product_ref:pr.productId,name:pr.name,canvas:canvasOf(pr),
-      })});
-      if(res?.data?.updated_at)pr._updatedAt=res.data.updated_at;
-    }catch(e2){}
   }
 }
 function scheduleProjectSync(pr){
@@ -1634,15 +1639,15 @@ async function loadCanvasProjects(){
     const res=await pjApi('/api/canvas-projects?status=active');
     const server=(res.data||[]).map(s=>({...((s.canvas)||{}),id:s.id,productId:s.product_ref,name:s.name,_updatedAt:s.updated_at}));
     const ids=new Set(server.map(x=>x.id));
-    Object.keys(pjSyncTimers).forEach(id=>{if(!ids.has(id))cancelProjectSync(id);});
+    Object.keys(pjSyncTimers).forEach(cancelProjectSync); // 服务器状态优先，丢弃所有待同步写入
     // 首次把 localStorage 里的项目迁移到数据库
     for(const lp of [...projectPrototypes]){
       if(ids.has(lp.id))continue;
       try{
-        await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+        const r=await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
           id:lp.id,product_ref:lp.productId,name:lp.name,canvas:canvasOf(lp),
         })});
-        server.push(lp);
+        server.push({...lp,_updatedAt:r?.data?.updated_at});
       }catch(e){}
     }
     projectPrototypes.splice(0,projectPrototypes.length,...server);
@@ -1896,8 +1901,9 @@ async function pjDeliver(){
       note:`项目 ${pr.name} · ${urls.length} 张`,
     })});
     cancelProjectSync(pr.id);
+    if(!pr._updatedAt)await syncProject(pr);
     await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify({
-      status:'delivered',hidden:true,canvas:canvasOf(pr),base_updated_at:pr._updatedAt||undefined,
+      status:'delivered',hidden:true,canvas:canvasOf(pr),base_updated_at:pr._updatedAt,
     })});
     const i=projectPrototypes.findIndex(x=>x.id===pr.id);if(i>=0)projectPrototypes.splice(i,1);
     projectId=projectPrototypes[0]?.id||'';saveProjectsLocal();
@@ -1933,13 +1939,14 @@ function projectCreateFromSelector(){
   const count=projectPrototypes.filter(x=>x.productId===product.id).length+1;
   const nodes=pjDefaultNodes();
   const item={id:'proj_'+Date.now(),productId:product.id,name:product.name+(count>1?` · 项目 ${count}`:''),
-    nodes,edges:nodes.slice(0,-1).map((n,i)=>({from:n.id,to:nodes[i+1].id})),runs:{},sources:{},createdAt:now()};
+    nodes,edges:nodes.slice(0,-1).map((n,i)=>({from:n.id,to:nodes[i+1].id})),runs:{},sources:{},
+    createdAt:now(),_provisional:true};
   projectPrototypes.unshift(item);
   projectId=item.id;projectNodeId='n_gen';projectSkuId=product.skus[0]?.id||'';
   pjView={x:30,y:20,k:1};pjFitFor=null;
   pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
     id:item.id,product_ref:item.productId,name:item.name,canvas:canvasOf(item),
-  })}).catch(()=>{});
+  })}).then(r=>{item._updatedAt=r?.data?.updated_at;item._provisional=false;}).catch(()=>{});
   projectSave();renderProjects();toast('项目已创建，画布已铺好默认流程');
 }
 function projectOpen(id){

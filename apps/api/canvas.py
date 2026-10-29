@@ -1,11 +1,13 @@
 """项目画布持久化：交付隐藏、回收站恢复、状态流转。"""
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from apps.core.models import CanvasProject, utcnow
 
@@ -53,6 +55,7 @@ def out(p: CanvasProject) -> dict[str, Any]:
 
 
 def reset_review_states(canvas: dict[str, Any]) -> dict[str, Any]:
+    canvas = copy.deepcopy(canvas or {})
     runs = canvas.get("runs") or {}
     targets = [n.get("id") for n in (canvas.get("nodes") or [])
                if n.get("type") in {"human_review", "deliver"}]
@@ -99,6 +102,7 @@ async def upsert_project(payload: CanvasIn) -> dict[str, Any]:
         p.status = payload.status
         p.hidden = payload.hidden
         p.canvas = payload.canvas
+        flag_modified(p, "canvas")
         p.updated_at = utcnow()
         await session.commit()
         return {"data": out(p)}
@@ -121,7 +125,9 @@ async def update_project(project_id: str, payload: CanvasPatch) -> dict[str, Any
         p = await session.get(CanvasProject, project_id)
         if not p or p.deleted_at is not None:
             raise HTTPException(404, "项目不存在")
-        if payload.base_updated_at and payload.base_updated_at != p.updated_at.isoformat():
+        if not payload.base_updated_at:
+            raise HTTPException(409, "缺少 base_updated_at，请刷新项目后再保存")
+        if payload.base_updated_at != p.updated_at.isoformat():
             raise HTTPException(409, "项目已在其它页面更新，请刷新后再试")
         if payload.name is not None:
             p.name = payload.name
@@ -136,6 +142,7 @@ async def update_project(project_id: str, payload: CanvasPatch) -> dict[str, Any
             p.hidden = payload.hidden
         if payload.canvas is not None:
             p.canvas = payload.canvas
+            flag_modified(p, "canvas")
         p.updated_at = utcnow()
         await session.commit()
         return {"data": out(p)}
@@ -167,7 +174,8 @@ async def restore_project(project_id: str) -> dict[str, Any]:
         p.status = "active"
         p.hidden = False
         p.delivered_at = None
-        p.canvas = reset_review_states(dict(p.canvas or {}))
+        p.canvas = reset_review_states(p.canvas or {})
+        flag_modified(p, "canvas")
         p.updated_at = utcnow()
         await session.commit()
         return {"data": out(p)}
