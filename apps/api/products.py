@@ -358,6 +358,20 @@ async def restore_product(product_id: str) -> dict[str, Any]:
         return {"data": await product_out(session, p)}
 
 
+@router.delete("/{product_id}/images/{image_id}")
+async def delete_product_image(product_id: str, image_id: str) -> dict[str, Any]:
+    """删除商品图片记录；原始对象保留在存储里，不做物理删除。"""
+    a = api()
+    async with a.db.session() as session:
+        p = await load_product(session, uid(product_id))
+        img = await session.get(ProductImage, uid(image_id))
+        if not img or str(img.product_id) != str(p.id):
+            raise HTTPException(404, "图片不存在")
+        await session.delete(img)
+        await session.commit()
+        return {"data": {"id": image_id, "deleted": True}}
+
+
 @router.get("/{product_id}/images/{image_id}/content")
 async def image_content(product_id: str, image_id: str) -> Response:
     a = api()

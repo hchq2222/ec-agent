@@ -431,6 +431,8 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .tpl-subject{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:60%;border-radius:6px;background:#dfe3ee}
 .tpl-slot{position:absolute;font-size:9px;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .trash-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.img-del{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(17,24,39,.65);color:#fff;font-size:14px;line-height:22px;text-align:center;cursor:pointer;z-index:2}
+.img-del:hover{background:var(--red)}
 .project-preview>.demo-subject{width:150px;height:210px;z-index:1}
 .project-preview .demo-label{position:absolute;right:10px;bottom:10px;padding:4px 7px;border-radius:4px;background:#1d2330;color:white;font-size:11px;z-index:2}
 .project-flow-editor{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 2px}
@@ -2280,6 +2282,40 @@ async function pdUploadImage(input,kind){
     toast('已上传，参与生成时作为参考图');
   }catch(e){toast('图片读取失败，换 JPG/PNG 再试');}
 }
+async function removeProductImage(p,url,kind){
+  if(!(await uiConfirm('删除这张图片？服务器上的原图对象会保留，只是不再出现在商品资料里。')))return;
+  const m=String(url).match(/\/api\/products\/([0-9a-f-]+)\/images\/([0-9a-f-]+)\/content/i);
+  if(m){
+    try{
+      const r=await fetch(`${GS_API}/api/products/${m[1]}/images/${m[2]}`,{method:'DELETE'});
+      if(!r.ok&&r.status!==404){
+        const body=await r.json().catch(()=>({}));
+        throw new Error(body.detail||`HTTP ${r.status}`);
+      }
+    }catch(e){
+      toast('服务器删除失败：'+(e.message||'网络错误'));
+      return;
+    }
+  }
+  p.imageGroups=pdImageGroups(p);
+  Object.keys(p.imageGroups).forEach(k=>{p.imageGroups[k]=p.imageGroups[k].filter(u=>u!==url);});
+  p.images=(p.images||[]).filter(u=>u!==url);
+  p.updatedAt=now();
+  saveProducts();renderProductDetail();renderProductList();
+  toast('图片已删除');
+}
+async function deleteProductImageByIndex(i){
+  const p=pById(curPid);if(!p)return;
+  const url=(p.images||[])[i];if(!url)return;
+  const groups=pdImageGroups(p);
+  const kind=groups.source.includes(url)?'source':groups.pack.includes(url)?'pack':'evidence';
+  await removeProductImage(p,url,kind);
+}
+async function deleteProductImageGroup(kind,idx){
+  const p=pById(curPid);if(!p)return;
+  const url=(p.imageGroups?.[kind]||[])[idx];if(!url)return;
+  await removeProductImage(p,url,kind);
+}
 function renderPdImages(p){
   const sub=CATS[p.cat].subject;
   const groups=pdImageGroups(p);
@@ -2289,14 +2325,19 @@ function renderPdImages(p){
     ${imgs.length?`<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>已上传图片</h3><span class="sub">${imgs.length} 张 · 按用途分组</span></div>
       <div class="card-b"><div class="gs-recent" style="flex-wrap:wrap">${imgs.map((u,i)=>{
         const kind=groups.source.includes(u)?'原始图':groups.pack.includes(u)?'包装多角度':'证据图';
-        return `<div class="gs-recent-item" style="width:150px"><img src="${u}" alt="" style="height:120px"><span class="gs-recent-label">${kind}</span></div>`;
+        return `<div class="gs-recent-item" style="width:150px;position:relative"><img src="${u}" alt="" style="height:120px">
+          <button type="button" class="img-del" aria-label="删除图片" title="删除图片" onclick="event.stopPropagation();deleteProductImageByIndex(${i})">×</button>
+          <span class="gs-recent-label">${kind}</span></div>`;
       }).join('')}</div></div></div>`:''}
     <div class="three-col" style="grid-template-columns:repeat(3,minmax(0,1fr))">${cards.map(([key,t,d])=>{
       const list=groups[key]||[];
       return `<div class="card"><div class="card-h"><h3>${t}</h3><span class="sub">${d}</span></div>
         <div class="card-b" style="text-align:center">
           ${list.length?`<div class="flex" style="gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">
-            ${list.slice(0,4).map((u,i)=>`<img src="${u}" alt="${t} ${i+1}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`).join('')}
+            ${list.slice(0,4).map((u,i)=>`<span style="position:relative;width:96px;height:96px;flex:none">
+              <img src="${u}" alt="${t} ${i+1}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block">
+              <button type="button" class="img-del" aria-label="删除图片" title="删除图片" onclick="event.stopPropagation();deleteProductImageGroup('${key}',${i})">×</button>
+            </span>`).join('')}
             ${list.length>4?`<span class="small muted">等 ${list.length} 张</span>`:''}
           </div>`:`<div class="ph sq" style="margin:0 auto 10px;width:160px;height:160px;max-width:100%">${productSVG(sub)}</div>`}
           <div class="small muted" style="margin-bottom:8px">已上传 ${list.length} 张</div>
