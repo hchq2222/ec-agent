@@ -1,6 +1,7 @@
 """商品档案 API：对话识别、草稿编辑、图片证据与确认入库。"""
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import uuid
 from typing import Any
@@ -356,6 +357,44 @@ async def restore_product(product_id: str) -> dict[str, Any]:
         p.updated_at = utcnow()
         await session.commit()
         return {"data": await product_out(session, p)}
+
+
+@router.post("/{product_id}/images", status_code=201)
+async def upload_product_image(
+    product_id: str,
+    file: UploadFile = File(...),
+    kind: str = Form("source"),
+) -> dict[str, Any]:
+    """上传单张商品图片（原始图 / 包装多角度 / 证据图），落 MinIO 与 product_image。"""
+    a = api()
+    if a.storage is None:
+        raise HTTPException(503, "未配置文件存储")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "文件为空")
+    if len(data) > MAX_FILE:
+        raise HTTPException(413, "单张图片不能超过 10MB")
+    mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "只支持图片文件")
+    if kind not in {"source", "pack", "evidence"}:
+        kind = "source"
+    async with a.db.session() as session:
+        p = await load_product(session, uid(product_id))
+        image_id = uuid.uuid4()
+        ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "png").lower()[:8]
+        key = build_object_key(asset_id=str(image_id), ext=ext, variant="product-source")
+        try:
+            await asyncio.to_thread(a.storage.put, key, data, mime)
+        except Exception as exc:
+            raise HTTPException(502, f"图片上传失败：{exc}") from exc
+        session.add(ProductImage(
+            id=image_id, product_id=p.id, object_key=key, mime=mime,
+            bytes=len(data), kind=kind,
+        ))
+        await session.commit()
+        return {"data": {"id": str(image_id), "url": f"/api/products/{p.id}/images/{image_id}/content",
+                         "mime": mime, "kind": kind}}
 
 
 @router.delete("/{product_id}/images/{image_id}")

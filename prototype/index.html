@@ -2271,7 +2271,20 @@ async function pdUploadImage(input,kind){
   if(!p||!file)return;
   if(!file.type.startsWith('image/')){toast('请选择图片文件');return;}
   try{
-    const url=await pjCompressImage(file);
+    let url;
+    if(isUuid(p.id)){
+      const fd=new FormData();fd.append('file',file);fd.append('kind',kind);
+      const r=await fetch(`${GS_API}/api/products/${p.id}/images`,{method:'POST',body:fd});
+      const body=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(body.detail||`HTTP ${r.status}`);
+      url=body.data.url;
+      // 服务器已落库，重新拉一次拿标准分组
+      await reloadProduct(p.id);
+      renderProductDetail();renderProductList();
+      toast('已上传到服务器');
+      return;
+    }
+    url=await pjCompressImage(file);
     const groups=pdImageGroups(p);
     groups[kind].push(url);
     p.images=[...(p.images||[]),url];
@@ -2280,7 +2293,7 @@ async function pdUploadImage(input,kind){
     audit.push({obj:p.name,op:'上传商品图片',from:'—',to:`${({source:'原始图',pack:'包装多角度',evidence:'证据图'})[kind]} +1`,who:OPERATOR,at:now()});
     renderProductDetail();renderProductList();
     toast('已上传，参与生成时作为参考图');
-  }catch(e){toast('图片读取失败，换 JPG/PNG 再试');}
+  }catch(e){toast('图片上传失败：'+(e.message||'换 JPG/PNG 再试'));}
 }
 async function removeProductImage(p,url,kind){
   if(!(await uiConfirm('删除这张图片？服务器上的原图对象会保留，只是不再出现在商品资料里。')))return;
@@ -2366,7 +2379,7 @@ function renderPdAudit(p){
       <tbody>${rows.map(a=>`<tr><td>${esc(a.obj)}</td><td>${esc(a.op)}</td><td>${esc(a.from)} → <b>${esc(a.to)}</b></td><td class="small muted">${esc(a.who)} · ${esc(a.at)}</td></tr>`).join('')}</tbody></table>`
       :'<div class="notice">还没有与该商品相关的审计记录。</div>'}</div></div>`;
 }
-function saveBasic(){
+async function saveBasic(){
   const p=pById(curPid),body=$('pd-body'),changes=[];
   body.querySelectorAll('[data-k]').forEach(el=>{
     const k=el.dataset.k,v=el.value.trim();
@@ -2374,27 +2387,30 @@ function saveBasic(){
   });
   if(!changes.length){toast('没有改动');return;}
   changes.forEach(([k,a,b])=>audit.push({obj:p.short||p.name,op:'修改基础信息 · '+k,from:a,to:b,who:OPERATOR,at:now()}));
-  p.updatedAt=now();saveProducts();
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
   renderProductList();renderProductDetail();
-  toast('已保存');
+  toast(ok?'已保存到服务器':'保存失败，已回滚');
 }
-function setAttr(key,value){
+async function setAttr(key,value){
   const p=pById(curPid),f=p.fields[key];if(!f)return;
   const old=f.v;const v=value.trim();
   if(v===old&&f.src==='human')return;
   f.v=v;f.src=v?'human':'missing';
   audit.push({obj:p.short||p.name,op:'修改字段 · '+key,from:old||'（空）',to:v||'（空）',who:OPERATOR,at:now()});
-  p.updatedAt=now();saveProducts();
+  p.updatedAt=now();
+  await persistProduct(p);
   renderProductList();renderProductDetail();
 }
-function confirmAttr(key){
+async function confirmAttr(key){
   const p=pById(curPid),f=p.fields[key];if(!f)return;
   f.src='human';
   audit.push({obj:p.short||p.name,op:'确认字段 · '+key,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});
-  p.updatedAt=now();saveProducts();
+  p.updatedAt=now();
+  await persistProduct(p);
   renderProductList();renderProductDetail();
 }
-function confirmAllAttrs(){
+async function confirmAllAttrs(){
   const p=pById(curPid);
   let n=0;
   Object.entries(p.fields).forEach(([k,f])=>{
@@ -2402,32 +2418,44 @@ function confirmAllAttrs(){
       audit.push({obj:p.short||p.name,op:'批量确认字段 · '+k,from:'AI 提取 · 待确认',to:'人工确认：'+f.v,who:OPERATOR,at:now()});}
   });
   if(!n){toast('没有可批量确认的字段（高敏字段需逐项确认）');return;}
-  p.updatedAt=now();saveProducts();renderProductList();renderProductDetail();toast(`已确认 ${n} 个字段`);
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
+  renderProductList();renderProductDetail();
+  toast(ok?`已确认 ${n} 个字段`:'保存失败，已回滚');
 }
-function setSku(id,key,value){
+async function setSku(id,key,value){
   const p=pById(curPid),s=p.skus.find(x=>x.id===id);if(!s)return;
   const old=s[key];
   s[key]=key==='price'?Math.max(0,parseFloat(value)||0):value.trim();
-  audit.push({obj:p.short||p.name,op:'修改 SKU · '+s.color+' '+s.spec+' · '+key,from:String(old),to:String(s[key]),who:OPERATOR,at:now()});
-  p.updatedAt=now();saveProducts();renderProductList();
+  audit.push({obj:p.short||p.name,op:'修改 SKU · '+skuDisplay(s)+' · '+key,from:String(old),to:String(s[key]),who:OPERATOR,at:now()});
+  p.updatedAt=now();
+  await persistProduct(p);
+  renderProductList();
 }
-function setSkuName(id,value){
+async function setSkuName(id,value){
   const p=pById(curPid),s=p&&p.skus.find(x=>x.id===id);if(!s)return;
   const name=String(value||'').trim()||'默认';
   s.color='默认';s.spec=name;
   audit.push({obj:p.short||p.name,op:'修改 SKU 名称',from:'—',to:name,who:OPERATOR,at:now()});
-  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
+  renderProductDetail();renderProductList();
+  if(!ok)toast('SKU 保存失败，已回滚');
 }
-function addSku(){
+async function addSku(){
   const p=pById(curPid);
   p.skus.push({id:'s_'+Date.now(),color:'默认',spec:'新 SKU',price:null});
-  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+  p.updatedAt=now();
+  await persistProduct(p);
+  renderProductDetail();renderProductList();
 }
 async function delSku(id){
   const p=pById(curPid);
   if(!(await uiConfirm('删除这个 SKU？')))return;
   p.skus=p.skus.filter(s=>s.id!==id);
-  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+  p.updatedAt=now();
+  await persistProduct(p);
+  renderProductDetail();renderProductList();
 }
 function genMatrix(){
   const p=pById(curPid);
@@ -2847,21 +2875,66 @@ function mapApiProduct(d){
   const fields={};
   (d.attrs||[]).forEach(a=>{fields[a.key]={v:[a.value,a.unit].filter(Boolean).join(' '),src:a.confirmed?'human':'ai'};});
   const cat=CATS[d.category]?d.category:'beauty';
+  const imgs=(d.images||[]).filter(i=>(i.mime||'').startsWith('image/'));
+  const imageGroups={source:[],pack:[],evidence:[]};
+  imgs.forEach(i=>{const k=['source','pack','evidence'].includes(i.kind)?i.kind:'source';imageGroups[k].push(i.url);});
   return {
     id:d.id,name:d.name,short:d.name,cat,pitch:d.pitch||'',code:d.code||'',brand:d.brand||'',
-    affected:0,fields,params:{},images:(d.images||[]).filter(i=>(i.mime||'').startsWith('image/')).map(i=>i.url),
+    affected:0,fields,params:{},images:imgs.map(i=>i.url),imageGroups,
     skus:(d.skus||[]).map(s=>({id:s.id,color:s.color,spec:s.spec,price:s.price||0})),
     source:'ai_intake',updatedAt:(d.updated_at||'').slice(0,16).replace('T',' ')||now(),
   };
+}
+/* 把本地商品改动写回服务端；本地示例商品只存 localStorage */
+async function persistProduct(p){
+  if(!isUuid(p.id)){saveProducts();return true;}
+  const attrs=Object.entries(p.fields||{})
+    .filter(([k,f])=>f&&String(f.v??'').trim()!=='')
+    .map(([k,f])=>({key:k,value:String(f.v),unit:'',source:f.src==='human'?'human':'ai',confirmed:f.src==='human'}));
+  const skus=(p.skus||[]).map(s=>({id:isUuid(s.id)?s.id:null,color:s.color||'默认',spec:s.spec||'默认',price:s.price??null}));
+  try{
+    const r=await fetch(`${GS_API}/api/products/${p.id}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:p.name||'未命名商品',category:p.cat||'beauty',brand:p.brand||'',
+        code:p.code||'',pitch:p.pitch||'',attrs,skus}),
+    });
+    const body=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(body.detail||`HTTP ${r.status}`);
+    mergeApiProduct(mapApiProduct(body.data));
+    saveProducts();
+    return true;
+  }catch(e){
+    toast('保存失败：'+(e.message||'网络错误'));
+    await reloadProduct(p.id);
+    return false;
+  }
+}
+async function reloadProduct(id){
+  if(!isUuid(id))return;
+  try{
+    const r=await fetch(`${GS_API}/api/products/${id}`);
+    if(!r.ok)return;
+    const body=await r.json();
+    mergeApiProduct(mapApiProduct(body.data));
+    saveProducts();renderProductList();
+    if(curPid===id)renderProductDetail();
+  }catch(e){}
 }
 function mergeApiProduct(p){
   const i=products.findIndex(x=>x.id===p.id);
   if(i>=0){
     const old=products[i];
     if(old.imageGroups){
-      p.imageGroups=old.imageGroups;
-      const local=Object.values(old.imageGroups).flat();
-      p.images=[...new Set([...(p.images||[]),...local])];
+      p.imageGroups=p.imageGroups||{source:[],pack:[],evidence:[]};
+      const serverImgs=new Set(p.images||[]);
+      Object.entries(old.imageGroups).forEach(([kind,list])=>{
+        (list||[]).forEach(url=>{
+          if(serverImgs.has(url))return;
+          p.imageGroups[kind]=p.imageGroups[kind]||[];
+          p.imageGroups[kind].push(url);
+          p.images.push(url);serverImgs.add(url);
+        });
+      });
     }
     products[i]=p;
   }else products.unshift(p);
