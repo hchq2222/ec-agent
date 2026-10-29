@@ -211,6 +211,7 @@ class Product(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
+    short_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     category: Mapped[str] = mapped_column(String(32), default="beauty", nullable=False)
     brand: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     code: Mapped[str] = mapped_column(String(64), default="", nullable=False)

@@ -54,6 +54,7 @@ async def product_out(session: Any, p: Product, *, include_messages: bool = Fals
     data: dict[str, Any] = {
         "id": str(p.id),
         "name": p.name,
+        "short": p.short_name or "",
         "category": p.category,
         "brand": p.brand,
         "code": p.code,
@@ -113,6 +114,7 @@ class SKUInput(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
+    short: str | None = Field(default=None, max_length=128)
     category: str | None = None
     brand: str | None = Field(default=None, max_length=128)
     code: str | None = Field(default=None, max_length=64)
@@ -273,6 +275,8 @@ async def update_product(product_id: str, payload: ProductUpdate) -> dict[str, A
         p = await load_product(session, uid(product_id))
         if payload.name is not None:
             p.name = payload.name.strip()
+        if payload.short is not None:
+            p.short_name = payload.short.strip()
         if payload.category is not None:
             if payload.category not in {"beauty", "home", "digital"}:
                 raise HTTPException(400, "品类只能是 beauty、home、digital")

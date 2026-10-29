@@ -2879,7 +2879,7 @@ function mapApiProduct(d){
   const imageGroups={source:[],pack:[],evidence:[]};
   imgs.forEach(i=>{const k=['source','pack','evidence'].includes(i.kind)?i.kind:'source';imageGroups[k].push(i.url);});
   return {
-    id:d.id,name:d.name,short:d.name,cat,pitch:d.pitch||'',code:d.code||'',brand:d.brand||'',
+    id:d.id,name:d.name,short:d.short||d.name,cat,pitch:d.pitch||'',code:d.code||'',brand:d.brand||'',
     affected:0,fields,params:{},images:imgs.map(i=>i.url),imageGroups,
     skus:(d.skus||[]).map(s=>({id:s.id,color:s.color,spec:s.spec,price:s.price||0})),
     source:'ai_intake',updatedAt:(d.updated_at||'').slice(0,16).replace('T',' ')||now(),
@@ -2895,7 +2895,7 @@ async function persistProduct(p){
   try{
     const r=await fetch(`${GS_API}/api/products/${p.id}`,{
       method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:p.name||'未命名商品',category:p.cat||'beauty',brand:p.brand||'',
+      body:JSON.stringify({name:p.name||'未命名商品',short:p.short||'',category:p.cat||'beauty',brand:p.brand||'',
         code:p.code||'',pitch:p.pitch||'',attrs,skus}),
     });
     const body=await r.json().catch(()=>({}));
