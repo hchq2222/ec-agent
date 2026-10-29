@@ -1093,6 +1093,22 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   </div>
 </div>
 
+<div class="modal-back" id="confirm-modal">
+  <div class="modal" style="max-width:440px" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal-h"><h3 id="confirm-title">确认操作</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="uiConfirmResolve(false)">✕</button></div>
+    <div class="modal-b"><p id="confirm-msg" style="margin:0;font-size:13px;line-height:1.7"></p></div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="uiConfirmResolve(false)">取消</button><button class="btn btn-danger" id="confirm-ok" onclick="uiConfirmResolve(true)">删除</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="prompt-modal">
+  <div class="modal" style="max-width:440px" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+    <div class="modal-h"><h3 id="prompt-title">输入</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="uiPromptResolve(false)">✕</button></div>
+    <div class="modal-b"><p id="prompt-msg" class="small muted" style="margin:0 0 8px"></p><input class="input" id="prompt-input"></div>
+    <div class="modal-f"><button class="btn btn-ghost" onclick="uiPromptResolve(false)">取消</button><button class="btn btn-primary" onclick="uiPromptResolve(true)">确定</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -1129,8 +1145,44 @@ function seg(opts,active=0){return `<div class="seg" role="group">${opts.map((o,
 let lastFocus=null;
 function openModal(id){lastFocus=document.activeElement;$(id).classList.add('open');const f=$(id).querySelector('.modal-b input,.modal-b select,.modal-b textarea,.modal-b button');(f||$(id).querySelector('button')).focus();}
 function closeModal(id){$(id).classList.remove('open');if(lastFocus&&document.contains(lastFocus))lastFocus.focus();}
-document.querySelectorAll('.modal-back').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id);}));
-document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;const open=[...document.querySelectorAll('.modal-back.open')].pop();if(open)closeModal(open.id);});
+let uiConfirmResolveFn=null,uiPromptResolveFn=null;
+function uiConfirm(message,okText='删除'){
+  return new Promise(resolve=>{
+    $('confirm-msg').textContent=message;
+    $('confirm-ok').textContent=okText;
+    uiConfirmResolveFn=resolve;
+    openModal('confirm-modal');
+    setTimeout(()=>$('confirm-ok')?.focus(),30);
+  });
+}
+function uiConfirmResolve(ok){
+  closeModal('confirm-modal');
+  const fn=uiConfirmResolveFn;uiConfirmResolveFn=null;
+  if(fn)fn(ok);
+}
+function uiPrompt(message,value=''){
+  return new Promise(resolve=>{
+    $('prompt-msg').textContent=message;
+    $('prompt-input').value=value;
+    uiPromptResolveFn=resolve;
+    openModal('prompt-modal');
+    setTimeout(()=>{$('prompt-input')?.focus();$('prompt-input')?.select();},30);
+  });
+}
+function uiPromptResolve(ok){
+  const value=$('prompt-input').value;
+  closeModal('prompt-modal');
+  const fn=uiPromptResolveFn;uiPromptResolveFn=null;
+  if(fn)fn(ok?value:null);
+}
+function dismissModal(backdrop){
+  if(!backdrop)return;
+  if(backdrop.id==='confirm-modal'){uiConfirmResolve(false);return;}
+  if(backdrop.id==='prompt-modal'){uiPromptResolve(false);return;}
+  closeModal(backdrop.id);
+}
+document.querySelectorAll('.modal-back').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)dismissModal(m);}));
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;const open=[...document.querySelectorAll('.modal-back.open')].pop();dismissModal(open);});
 
 /* ============ 示例数据（各页共用同一份，保证口径一致） ============ */
 const CATS={
@@ -1201,9 +1253,9 @@ const protoTemplates=(()=>{
 function tplSave(){try{localStorage.setItem('proto.templates',JSON.stringify(protoTemplates));}catch(e){}}
 function tplById(id){return protoTemplates.find(t=>t.id===id&&!t.deleted)||null;}
 function tplPushToTrash(t){trashPush('template',t.id,t.name,t);}
-function tplDelete(id){
+async function tplDelete(id){
   const t=protoTemplates.find(x=>x.id===id);if(!t)return;
-  if(!confirm(`删除模板「${t.name}」？可在 设置 → 回收站 恢复。`))return;
+  if(!(await uiConfirm(`删除模板「${t.name}」？可在 设置 → 回收站 恢复。`)))return;
   t.deleted=true;tplPushToTrash(t);tplSave();renderTemplates();renderProjects();toast('模板已移入回收站');
 }
 function tplRestoreBuiltins(){
@@ -1448,9 +1500,9 @@ function openProjectFromProduct(pid){
 }
 function projectSelectNode(id){projectNodeId=id;renderProjects();}
 function projectSelectSku(id){projectSkuId=id;renderProjects();}
-function projectDeleteCurrent(){
+async function projectDeleteCurrent(){
   const pr=projectCurrent();if(!pr)return;
-  if(!confirm(`删除项目「${pr.name}」？可在 设置 → 回收站 恢复。`))return;
+  if(!(await uiConfirm(`删除项目「${pr.name}」？可在 设置 → 回收站 恢复。`)))return;
   trashPush('project',pr.id,pr.name,pr);
   const i=projectPrototypes.findIndex(x=>x.id===pr.id);if(i>=0)projectPrototypes.splice(i,1);
   projectId=projectPrototypes[0]?.id||'';projectSave();renderProjects();toast('项目已移入回收站');
@@ -2057,9 +2109,9 @@ function renderProductList(){
         <td><button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProduct('${p.id}')">删除</button></td>
       </tr>`;}).join('')}</tbody></table>`;
 }
-function deleteProduct(pid){
+async function deleteProduct(pid){
   const p=pById(pid);if(!p)return;
-  if(!confirm(`删除商品「${p.name}」？\n关联项目会一起进回收站，可在 设置 → 回收站 恢复。`))return;
+  if(!(await uiConfirm(`删除商品「${p.name}」？关联项目会一起进回收站，可在 设置 → 回收站 恢复。`)))return;
   trashPush('product',p.id,p.name,p);
   for(let i=projectPrototypes.length-1;i>=0;i--){
     const pr=projectPrototypes[i];
@@ -2316,9 +2368,9 @@ function addSku(){
   p.skus.push({id:'s_'+Date.now(),color:'默认',spec:'新 SKU',price:null});
   p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
 }
-function delSku(id){
+async function delSku(id){
   const p=pById(curPid);
-  if(!confirm('删除这个 SKU？'))return;
+  if(!(await uiConfirm('删除这个 SKU？')))return;
   p.skus=p.skus.filter(s=>s.id!==id);
   p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
 }
@@ -2518,8 +2570,8 @@ function piRenderFiles(){
   $('pi-hint').textContent=`${piFiles.length}/6 个文件`;
 }
 function piRemoveFile(i){piFiles.splice(i,1);piRenderFiles();}
-function piEmptyDraft(){
-  const name=prompt('模型或渠道不可用时可先建空草稿。商品名称：','未命名商品');
+async function piEmptyDraft(){
+  const name=await uiPrompt('模型或渠道不可用时可先建空草稿。先给商品起个名字，字段稍后再补。','未命名商品');
   if(name===null)return;
   const id='p_'+Date.now();
   const safe=(name||'').trim()||'未命名商品';
@@ -3361,9 +3413,9 @@ function renderVersions(){
       </span>
     </div>`).join('')+'<div class="notice" style="margin-top:10px">新确认会让旧版本过期；删除进回收站，原图不物理删除。</div>';
 }
-function deleteVersion(n){
+async function deleteVersion(n){
   const v=versions.find(x=>x.v===n);if(!v)return;
-  if(!confirm(`删除素材 v${n}？可在 设置 → 回收站 恢复。`))return;
+  if(!(await uiConfirm(`删除素材 v${n}？可在 设置 → 回收站 恢复。`)))return;
   v.deleted=true;
   trashPush('asset','v'+n,`素材 v${n} · ${v.note||''}`,{v:n});
   audit.push({obj:`素材 v${n}`,op:'删除素材',from:v.status,to:'回收站',who:OPERATOR,at:now()});
@@ -3468,9 +3520,9 @@ function toggleChannel(id){
   if(!channels.some(x=>x.enabled)){c.enabled=true;toast('至少保留一个启用渠道');return;}
   saveChannels();renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();toast(`已${c.enabled?'启用':'停用'}「${c.name}」`);
 }
-function deleteChannel(id){
+async function deleteChannel(id){
   const c=channels.find(x=>x.id===id);if(!c)return;
-  if(!confirm(`删除渠道「${c.name}」？`))return;
+  if(!(await uiConfirm(`删除渠道「${c.name}」？`)))return;
   channels=channels.filter(x=>x.id!==id);
   if(studioChannelId===id)studioChannelId=null;
   saveChannels();renderStudio();if(settingsTab==='models')renderSettings();else renderChannels();toast('渠道已删除');
@@ -3980,7 +4032,7 @@ async function gsDeleteJob(ev,id){
   if(ev){ev.stopPropagation();ev.preventDefault();}
   const item=gs.history.find(j=>j.id===id);
   const label=((item&&item.prompt)||'这条生成记录').slice(0,40);
-  if(!confirm(`删除「${label}」及其图片？`))return;
+  if(!(await uiConfirm(`删除「${label}」及其图片？`)))return;
   try{
     await gsApi('/api/jobs/'+id,{method:'DELETE'});
     if(gs.activeJob===id){gs.activeJob=null;gsEmpty();$('gs-result-meta').textContent='';}
