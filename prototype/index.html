@@ -1602,15 +1602,23 @@ async function pjInputUpload(input){
 function canvasOf(pr){return {nodes:pr.nodes||[],edges:pr.edges||[],runs:pr.runs||{},sources:pr.sources||{},masks:pr.masks||{},inputs:pr.inputs||{}};}
 function saveProjectsLocal(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('本地缓存空间不足，修改仍会尝试写服务器');}}
 const pjSyncTimers={};
+function cancelProjectSync(id){if(pjSyncTimers[id]){clearTimeout(pjSyncTimers[id]);delete pjSyncTimers[id];}}
 async function syncProject(pr){
-  const body={name:pr.name,canvas:canvasOf(pr)};
+  const body={name:pr.name,canvas:canvasOf(pr),base_updated_at:pr._updatedAt||undefined};
   try{
-    await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify(body)});
+    const res=await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify(body)});
+    if(res?.data?.updated_at)pr._updatedAt=res.data.updated_at;
   }catch(e){
+    if(/HTTP 409|已在其它页面更新/.test(e.message||'')){
+      toast('项目已在其它页面更新，已刷新为服务器状态');
+      await loadCanvasProjects();
+      return;
+    }
     try{
-      await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+      const res=await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
         id:pr.id,product_ref:pr.productId,name:pr.name,canvas:canvasOf(pr),
       })});
+      if(res?.data?.updated_at)pr._updatedAt=res.data.updated_at;
     }catch(e2){}
   }
 }
@@ -1624,8 +1632,9 @@ function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||nu
 async function loadCanvasProjects(){
   try{
     const res=await pjApi('/api/canvas-projects?status=active');
-    const server=(res.data||[]).map(s=>({...((s.canvas)||{}),id:s.id,productId:s.product_ref,name:s.name}));
+    const server=(res.data||[]).map(s=>({...((s.canvas)||{}),id:s.id,productId:s.product_ref,name:s.name,_updatedAt:s.updated_at}));
     const ids=new Set(server.map(x=>x.id));
+    Object.keys(pjSyncTimers).forEach(id=>{if(!ids.has(id))cancelProjectSync(id);});
     // 首次把 localStorage 里的项目迁移到数据库
     for(const lp of [...projectPrototypes]){
       if(ids.has(lp.id))continue;
@@ -1647,6 +1656,7 @@ async function deleteCanvasProjectApi(id){
 }
 async function restoreCanvasProject(id){
   try{
+    cancelProjectSync(id);
     await pjApi(`/api/canvas-projects/${id}/restore`,{method:'POST'});
     await loadCanvasProjects();renderTrash();toast('项目已恢复为进行中');
   }catch(e){toast('恢复失败：'+(e.message||'网络错误'));}
@@ -1885,8 +1895,9 @@ async function pjDeliver(){
       product_ref:p.id,project_id:pr.id,title:p.short||p.name,images:urls,
       note:`项目 ${pr.name} · ${urls.length} 张`,
     })});
+    cancelProjectSync(pr.id);
     await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify({
-      status:'delivered',hidden:true,canvas:canvasOf(pr),
+      status:'delivered',hidden:true,canvas:canvasOf(pr),base_updated_at:pr._updatedAt||undefined,
     })});
     const i=projectPrototypes.findIndex(x=>x.id===pr.id);if(i>=0)projectPrototypes.splice(i,1);
     projectId=projectPrototypes[0]?.id||'';saveProjectsLocal();
@@ -4144,6 +4155,7 @@ async function rollbackVersion(n){
   const v=versions.find(x=>x.v===n);if(!v?.id)return;
   if(!(await uiConfirm(`回滚 v${n}？当前版本与审核会被删除，项目恢复到进行中（确认/交付节点重置）。`)))return;
   try{
+    if(v.projectId)cancelProjectSync(v.projectId);
     await pjApi(`/api/versions/${v.id}/rollback`,{method:'POST'});
     await Promise.all([loadVersions(),loadCanvasProjects()]);
     toast('已回滚：版本已删除，项目已恢复为进行中');

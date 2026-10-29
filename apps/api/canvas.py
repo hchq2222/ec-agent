@@ -34,6 +34,7 @@ class CanvasPatch(BaseModel):
     status: str | None = None
     hidden: bool | None = None
     canvas: dict[str, Any] | None = None
+    base_updated_at: str | None = None
 
 
 def out(p: CanvasProject) -> dict[str, Any]:
@@ -120,6 +121,8 @@ async def update_project(project_id: str, payload: CanvasPatch) -> dict[str, Any
         p = await session.get(CanvasProject, project_id)
         if not p or p.deleted_at is not None:
             raise HTTPException(404, "项目不存在")
+        if payload.base_updated_at and payload.base_updated_at != p.updated_at.isoformat():
+            raise HTTPException(409, "项目已在其它页面更新，请刷新后再试")
         if payload.name is not None:
             p.name = payload.name
         if payload.status is not None:
