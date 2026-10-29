@@ -1169,6 +1169,11 @@ try{
   saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
 }catch(e){}
 const pById=id=>products.find(p=>p.id===id);
+function productSourceImage(p){
+  if(!p)return '';
+  if(p.imageGroups)return p.imageGroups.source?.[0]||'';
+  return (p.images||[])[0]||'';
+}
 function skuDisplay(s){
   if(!s)return '';
   const c=String(s.color||'').trim(),p=String(s.spec||'').trim();
@@ -1343,7 +1348,7 @@ function pjEnsureModels(){
 async function pjReferenceImage(p,pr,skuId){
   const local=pr?.sources?.[skuId];
   if(local?.dataUrl)return local.dataUrl; // 项目里上传的原图优先
-  const url=(p.images||[])[0];
+  const url=productSourceImage(p); // 其次商品档案的「原始图」
   if(!url)return null;
   try{
     const ctrl=new AbortController();
@@ -1652,7 +1657,7 @@ function pjInspector(pr,p,nodes,skuId){
         </select>
         ${tplPreviewBox(n.config.template)}
       </div>
-      <p class="small muted">参考图：${pr.sources?.[skuId]?'使用本 SKU 上传的原图':((p.images||[]).length?'使用商品档案原图':'无（纯文生图）')}</p>`;
+      <p class="small muted">参考图：${pr.sources?.[skuId]?'使用本 SKU 上传的原图':(productSourceImage(p)?'使用商品档案的原始图':'无（纯文生图）')}</p>`;
   }else if(n.type==='process'){
     body=`<div class="field"><label>处理操作（白名单）</label>
       <select class="select" onchange="pjNodeConfig('operation',this.value);renderProjects()">${Object.entries(PJ_PROCESS).map(([k,v])=>`<option value="${k}" ${k===n.config.operation?'selected':''}>${v}</option>`).join('')}</select></div>
@@ -1665,7 +1670,7 @@ function pjInspector(pr,p,nodes,skuId){
       :`<p class="small muted">生成完成后会停在这里，等待人工确认；确认后自动走到交付。</p>`;
   }else if(n.type==='source'){
     const src=pr.sources?.[skuId];
-    const fallback=(p.images||[])[0];
+    const fallback=productSourceImage(p);
     body=`${src?`<div class="flex" style="gap:12px;align-items:flex-start">
         <img src="${src.dataUrl}" alt="参考原图" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">
         <div class="small muted">${esc(src.name||'已上传原图')} · ${esc(src.at||'')}<br>生成时作为图生图参考</div>
@@ -1718,7 +1723,7 @@ function renderProjects(){
       <button type="button" class="pj-node ${n.id===projectNodeId?'active':''} ${st}" onclick="projectSelectNode('${n.id}')">
         <span class="pj-node-type">${PJ_TYPE[n.type]}</span>
         <b>${esc(n.label||PJ_TYPE[n.type])}</b>
-        <span class="pj-node-sub">${esc(n.type==='source'?(pr.sources?.[projectSkuId]?'已上传原图 · 图生图':((p.images||[]).length?'用商品档案原图':'未上传 · 纯文生图')):pjNodeSummary(n))}</span>
+        <span class="pj-node-sub">${esc(n.type==='source'?(pr.sources?.[projectSkuId]?'已上传原图 · 图生图':(productSourceImage(p)?'用商品档案原始图':'未上传 · 纯文生图')):pjNodeSummary(n))}</span>
         <span class="pill ${PJ_ST[st][0]}">${PJ_ST[st][1]}</span>
       </button>`;
   }).join('');
@@ -1733,7 +1738,7 @@ function renderProjects(){
       <div class="card-b"><div class="flex" style="gap:10px;flex-wrap:wrap;align-items:center">
         ${p.skus.length>1?`<span class="small muted">运行 SKU</span>
         <select class="select" style="width:auto" onchange="projectSelectSku(this.value)">${skuOpts}</select>`:''}
-        <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||(p.images||[]).length)?'替换原图':'上传原图'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||productSourceImage(p))?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
         <button class="btn btn-primary btn-sm" onclick="pjGenerateNode()" ${genNode?'':'disabled'}>${genLabel}</button>
         ${run.status==='waiting'?'<button type="button" class="btn btn-soft btn-sm" onclick="pjApprove()">确认通过并继续</button>':''}
@@ -2180,19 +2185,59 @@ function renderPdSku(p){
       <p class="small muted" style="margin-top:6px">SKU 名称自己定；颜色、规格、售价不再单独维护。</p>
     </div></div>`;
 }
+function pdImageGroups(p){
+  p.imageGroups=p.imageGroups||{source:[],pack:[],evidence:[]};
+  ['source','pack','evidence'].forEach(k=>{if(!Array.isArray(p.imageGroups[k]))p.imageGroups[k]=[];});
+  // 老数据/接口图片没有分类时，默认归到「原始图」
+  const known=new Set(Object.values(p.imageGroups).flat());
+  (p.images||[]).forEach(u=>{if(!known.has(u)){p.imageGroups.source.push(u);known.add(u);}});
+  return p.imageGroups;
+}
+function pdPickImage(kind){
+  const el=$('pd-file-'+kind);
+  if(el)el.click();
+}
+async function pdUploadImage(input,kind){
+  const p=pById(curPid),file=input.files&&input.files[0];
+  input.value='';
+  if(!p||!file)return;
+  if(!file.type.startsWith('image/')){toast('请选择图片文件');return;}
+  try{
+    const url=await pjCompressImage(file);
+    const groups=pdImageGroups(p);
+    groups[kind].push(url);
+    p.images=[...(p.images||[]),url];
+    p.updatedAt=now();
+    saveProducts();
+    audit.push({obj:p.name,op:'上传商品图片',from:'—',to:`${({source:'原始图',pack:'包装多角度',evidence:'证据图'})[kind]} +1`,who:OPERATOR,at:now()});
+    renderProductDetail();renderProductList();
+    toast('已上传，参与生成时作为参考图');
+  }catch(e){toast('图片读取失败，换 JPG/PNG 再试');}
+}
 function renderPdImages(p){
   const sub=CATS[p.cat].subject;
+  const groups=pdImageGroups(p);
   const imgs=p.images||[];
+  const cards=[['source','原始图','主图源图，≥3 张'],['pack','包装多角度','瓶身 / 盒身 / 标签'],['evidence','证据图','成分表 / 检测报告 / 认证']];
   $('pd-body').innerHTML=`<div class="notice">图片是商品事实的证据：原图、包装多角度、成分表 / 检测报告。每张标注用途，供字段引用。</div>
-    ${imgs.length?`<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>已上传图片</h3><span class="sub">${imgs.length} 张 · 第一张为主图</span></div>
-      <div class="card-b"><div class="gs-recent" style="flex-wrap:wrap">${imgs.map((u,i)=>
-        `<div class="gs-recent-item" style="width:150px"><img src="${u}" alt="" style="height:120px"><span class="gs-recent-label">${i===0?'主图':`图 ${i+1}`}</span></div>`).join('')}</div></div></div>`:''}
-    <div class="three-col">${[['原始图','主图源图，≥3 张'],['包装多角度','瓶身 / 盒身 / 标签'],['证据图','成分表 / 检测报告 / 认证']].map(([t,d])=>
-      `<div class="card"><div class="card-h"><h3>${t}</h3><span class="sub">${d}</span></div>
+    ${imgs.length?`<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>已上传图片</h3><span class="sub">${imgs.length} 张 · 按用途分组</span></div>
+      <div class="card-b"><div class="gs-recent" style="flex-wrap:wrap">${imgs.map((u,i)=>{
+        const kind=groups.source.includes(u)?'原始图':groups.pack.includes(u)?'包装多角度':'证据图';
+        return `<div class="gs-recent-item" style="width:150px"><img src="${u}" alt="" style="height:120px"><span class="gs-recent-label">${kind}</span></div>`;
+      }).join('')}</div></div></div>`:''}
+    <div class="three-col" style="grid-template-columns:repeat(3,minmax(0,1fr))">${cards.map(([key,t,d])=>{
+      const list=groups[key]||[];
+      return `<div class="card"><div class="card-h"><h3>${t}</h3><span class="sub">${d}</span></div>
         <div class="card-b" style="text-align:center">
-          <div class="ph sq" style="margin:0 auto 10px">${productSVG(sub)}</div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="toast('原型：上传后落 raw 桶，不参与版本链')">上传</button>
-        </div></div>`).join('')}</div>`;
+          ${list.length?`<div class="flex" style="gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">
+            ${list.slice(0,4).map((u,i)=>`<img src="${u}" alt="${t} ${i+1}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`).join('')}
+            ${list.length>4?`<span class="small muted">等 ${list.length} 张</span>`:''}
+          </div>`:`<div class="ph sq" style="margin:0 auto 10px;width:160px;height:160px;max-width:100%">${productSVG(sub)}</div>`}
+          <div class="small muted" style="margin-bottom:8px">已上传 ${list.length} 张</div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="pdPickImage('${key}')">上传${t}</button>
+          <input type="file" id="pd-file-${key}" accept="image/*" hidden onchange="pdUploadImage(this,'${key}')">
+        </div></div>`;
+    }).join('')}</div>`;
 }
 function renderPdImpact(p){
   const n=p.affected||0;
@@ -2704,7 +2749,15 @@ function mapApiProduct(d){
 }
 function mergeApiProduct(p){
   const i=products.findIndex(x=>x.id===p.id);
-  if(i>=0)products[i]=p;else products.unshift(p);
+  if(i>=0){
+    const old=products[i];
+    if(old.imageGroups){
+      p.imageGroups=old.imageGroups;
+      const local=Object.values(old.imageGroups).flat();
+      p.images=[...new Set([...(p.images||[]),...local])];
+    }
+    products[i]=p;
+  }else products.unshift(p);
 }
 async function loadProductsFromApi(){
   try{
@@ -2716,8 +2769,7 @@ async function loadProductsFromApi(){
     (body.data||[]).forEach(d=>{
       const p=mapApiProduct(d);
       if(trashed.has(p.id))return; // 本地已删的商品，刷新时不要被 API 合并回来
-      const i=products.findIndex(x=>x.id===p.id);
-      if(i>=0)products[i]=p;else products.unshift(p);
+      mergeApiProduct(p);
       changed=true;
     });
     if(changed){saveProducts();renderProductList();renderOverviewProducts();}
