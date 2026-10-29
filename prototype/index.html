@@ -1484,9 +1484,45 @@ async function pjGenerate(pr,node,skuId,refOverride,mask){
   return pjApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
 }
 function pjNodeInput(pr,run,node){
+  // 手动替换的输入图优先
+  if(run.inputs?.[node.id]?.url)return run.inputs[node.id].url;
   const parents=pjEdges(pr).filter(e=>e.to===node.id).map(e=>e.from);
   for(const pid of parents){const out=run.outputs?.[pid];if(out?.url)return out.url;}
+  // 没有父节点输出时，退到最近一张生成图（避免精修只能改商品原图）
+  const outs=Object.entries(run.outputs||{}).filter(([,o])=>o?.url)
+    .sort((a,b)=>String(b[1].at||'').localeCompare(String(a[1].at||'')));
+  if(outs.length)return outs[0][1].url;
   return pr.sources?.[projectSkuId]?.dataUrl||productSourceImage(pById(pr.productId));
+}
+function pjInputOptions(pr,run,node){
+  const opts=[];
+  const p=pById(pr.productId);
+  const source=productSourceImage(p);
+  if(source)opts.push({url:source,label:'商品原图'});
+  Object.entries(run.outputs||{}).forEach(([id,o])=>{
+    if(o?.url)opts.push({url:o.url,label:(pr.nodes.find(n=>n.id===id)?.label||'生成')+' · '+(o.at||'')});
+  });
+  if(run.inputs?.[node.id]?.url&&!opts.some(o=>o.url===run.inputs[node.id].url)){
+    opts.unshift({url:run.inputs[node.id].url,label:'已上传替换'});
+  }
+  return opts;
+}
+function pjSetInput(url){
+  const pr=projectCurrent(),node=pr?.nodes.find(n=>n.id===projectNodeId);if(!pr||!node||!url)return;
+  const run=pr.runs[projectSkuId]=pr.runs[projectSkuId]||{states:{},outputs:{},masks:{},inputs:{}};
+  run.inputs=run.inputs||{};
+  run.inputs[node.id]={url,at:now()};
+  if(run.masks)delete run.masks[node.id]; // 换图后旧涂抹失效
+  projectSave();renderProjects();toast('输入图片已替换，请重新涂抹');
+}
+async function pjInputUpload(input){
+  const file=input.files&&input.files[0];input.value='';
+  if(!file)return;
+  if(!file.type.startsWith('image/')){toast('请选择图片文件');return;}
+  try{
+    const url=await pjCompressImage(file);
+    pjSetInput(url);
+  }catch(e){toast('图片读取失败，换 JPG/PNG 再试');}
 }
 function projectSave(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
 function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
@@ -1622,7 +1658,7 @@ function pjBindFlow(){
     pjView.k=k;pjApplyView();
   },{passive:false});
 }
-let pjMask=null;
+let pjMask=null,pjInputOptionsCache=[];
 function pjPaintStroke(mc,dc,stroke){
   const pts=stroke.points||[];if(!pts.length)return;
   const paint=(ctx,mode,color)=>{
@@ -1991,11 +2027,19 @@ function pjInspector(pr,p,nodes,skuId){
     const needInput=n.type!=='generate';
     const input=needInput?pjNodeInput(pr,run,n):'';
     const isGen=n.type==='generate';
+    if(needInput)pjInputOptionsCache=pjInputOptions(pr,run,n);
     body=`<div class="flex" style="gap:8px;align-items:center;margin-bottom:10px">
       <button type="button" class="btn btn-primary btn-sm" onclick="pjGenerateNode()">${nodeDone?'重新生成':'生成图片'}</button>
       <span class="small muted">${nodeDone?'已生成，可改提示词后重新生成':'先写提示词，再点生成'}</span>
     </div>
-    ${needInput?`<div class="field"><label>输入图片</label>
+    ${needInput?`<div class="field"><label>输入图片 <span class="small muted" style="font-weight:400">默认父节点输出或最近生成图，可替换</span></label>
+      <div class="flex" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <select class="select" style="max-width:340px" onchange="pjSetInput(pjInputOptionsCache[this.value]?.url)">
+          ${pjInputOptionsCache.length?pjInputOptionsCache.map((o,i)=>`<option value="${i}" ${o.url===input?'selected':''}>${esc(o.label)}</option>`).join(''):'<option value="">暂无可用图片</option>'}
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="$('pj-input-file').click()">上传替换</button>
+        <input type="file" id="pj-input-file" accept="image/*" hidden onchange="pjInputUpload(this)">
+      </div>
       ${input?`<div class="pj-mask" id="pj-mask">
         <img id="pj-mask-img" src="${esc(input)}" alt="输入图片">
         <canvas id="pj-mask-draw"></canvas>
@@ -2005,7 +2049,7 @@ function pjInspector(pr,p,nodes,skuId){
         <input type="range" id="pj-brush" min="10" max="100" value="40" oninput="pjMaskBrush(this.value)" style="width:140px">
         <button type="button" class="btn btn-ghost btn-sm" onclick="pjMaskClear()">清除涂抹</button>
         <span class="small muted">在图上涂红要修改的区域</span>
-      </div>`:'<div class="notice amber">这个节点需要输入图片：先在它的上游生成一张，再回来精修/处理。</div>'}</div>`:''}
+      </div>`:'<div class="notice amber">这个节点需要输入图片：先在上游生成一张，或点「上传替换」。</div>'}</div>`:''}
     <div class="flex" style="gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <button type="button" class="btn btn-soft btn-sm" onclick="aiWritePrompt(this)">✨ AI 生成提示词</button>
       <span class="small muted">DeepSeek 根据商品事实与当前模板生成，可再改</span>
@@ -2160,13 +2204,13 @@ function renderProjects(){
         </div>
       </div>
       <p class="small muted" style="margin-top:10px">拖动节点可调整位置；接在同一个父节点后面就是并行分支；新增/删除节点不会清空已生成的结果。滚轮缩放，拖空白处平移。</p></div></div>
-    ${Object.keys(run.outputs||{}).length?`<div class="card"><div class="card-h"><h3>生成结果 · ${esc(skuDisplay(sku))}</h3><span class="pill green">${Object.keys(run.outputs).length} 张</span></div>
-      <div class="card-b"><div class="pj-results">${Object.entries(run.outputs).map(([nid,o])=>{
-        const label=o.label||pr.nodes.find(n=>n.id===nid)?.label||'生成';
-        return `<div class="pj-result"><a href="${esc(o.url)}" target="_blank" rel="noopener"><img src="${esc(o.url)}" alt="${esc(label)}"></a>
-          <div class="m"><b class="small">${esc(label)}</b><div class="small muted">${esc(o.model||'')} · ${o.latency||0}ms</div></div></div>`;
-      }).join('')}</div>
-      <p class="small muted" style="margin-top:10px">每张图都已写入素材库版本（待确认）。并行分支会分别显示。</p>
+    ${run.outputs[projectNodeId]?`<div class="card"><div class="card-h"><h3>节点结果 · ${esc(selNode?.label||'')}</h3><span class="pill green">${esc(skuDisplay(sku))}</span></div>
+      <div class="card-b"><div class="pj-results">${(()=>{
+        const o=run.outputs[projectNodeId];
+        return `<div class="pj-result"><a href="${esc(o.url)}" target="_blank" rel="noopener"><img src="${esc(o.url)}" alt="${esc(selNode?.label||'')}"></a>
+          <div class="m"><b class="small">${esc(selNode?.label||'')}</b><div class="small muted">${esc(o.model||'')} · ${o.latency||0}ms</div></div></div>`;
+      })()}</div>
+      <p class="small muted" style="margin-top:10px">该图已写入素材库版本（待确认）。切换节点可查看其它分支的结果。</p>
       <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div></div>`:''}
     ${pjInspector(pr,p,pr.nodes,projectSkuId)}
   </div>`;
