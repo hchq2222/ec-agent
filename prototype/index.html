@@ -423,6 +423,9 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .pj-fnode{position:absolute;width:180px;flex:none;min-height:110px;cursor:grab;user-select:none;background:#fff}
 .pj-fnode.dragging{cursor:grabbing;z-index:5;box-shadow:0 10px 24px rgba(16,24,40,.16)}
 .pj-flow-tools{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px;z-index:6}
+.pj-mask{position:relative;max-width:520px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fafbfc}
+.pj-mask img{display:block;width:100%;height:auto}
+.pj-mask canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
 .pj-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
 .pj-result{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
 .pj-result img{width:100%;height:170px;object-fit:contain;background:#fafbfc;display:block}
@@ -1467,7 +1470,7 @@ function pjSourceRemove(){
   delete pr.sources[projectSkuId];
   projectSave();renderProjects();toast('已移除该 SKU 的原图');
 }
-async function pjGenerate(pr,node,skuId,refOverride){
+async function pjGenerate(pr,node,skuId,refOverride,mask){
   const p=pById(pr.productId);
   const channelId=node.config.channelId||pjChannelId;
   const model=node.config.model||pjModels[0]?.key;
@@ -1477,7 +1480,13 @@ async function pjGenerate(pr,node,skuId,refOverride){
     quality:node.config.quality||'auto',size:node.config.size||'1024x1024',output_format:'png'};
   const ref=refOverride||await pjReferenceImage(p,pr,skuId);
   if(ref)body.images=[ref];
+  if(mask)body.mask=mask;
   return pjApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
+}
+function pjNodeInput(pr,run,node){
+  const parents=pjEdges(pr).filter(e=>e.to===node.id).map(e=>e.from);
+  for(const pid of parents){const out=run.outputs?.[pid];if(out?.url)return out.url;}
+  return pr.sources?.[projectSkuId]?.dataUrl||productSourceImage(pById(pr.productId));
 }
 function projectSave(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
 function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
@@ -1613,6 +1622,94 @@ function pjBindFlow(){
     pjView.k=k;pjApplyView();
   },{passive:false});
 }
+let pjMask=null;
+function pjPaintStroke(mc,dc,stroke){
+  const pts=stroke.points||[];if(!pts.length)return;
+  const paint=(ctx,mode,color)=>{
+    ctx.save();
+    ctx.globalCompositeOperation=mode;
+    ctx.strokeStyle=color;ctx.lineWidth=stroke.size||40;ctx.lineCap='round';ctx.lineJoin='round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0]+0.01,pts[0][1]+0.01);
+    if(pts.length===1)ctx.lineTo(pts[0][0],pts[0][1]);
+    else pts.slice(1).forEach(p=>ctx.lineTo(p[0],p[1]));
+    ctx.stroke();ctx.restore();
+  };
+  paint(mc,'destination-out','#000');
+  paint(dc,'source-over','rgba(239,68,68,.45)');
+}
+function pjInitMask(){
+  const wrap=$('pj-mask');if(!wrap){pjMask=null;return;}
+  const img=$('pj-mask-img'),draw=$('pj-mask-draw');if(!img||!draw)return;
+  const pr=projectCurrent();const node=pr?.nodes.find(n=>n.id===projectNodeId);if(!pr||!node)return;
+  const run=pr.runs[projectSkuId]=pr.runs[projectSkuId]||{states:{},outputs:{},masks:{}};
+  run.masks=run.masks||{};
+  const saved=run.masks[node.id]||{size:40,strokes:[]};
+  const mask=document.createElement('canvas');
+  const setup=()=>{
+    const w=img.naturalWidth||1024,h=img.naturalHeight||1024;
+    mask.width=w;mask.height=h;draw.width=w;draw.height=h;
+    const mc=mask.getContext('2d');mc.fillStyle='#fff';mc.fillRect(0,0,w,h);
+    const dc=draw.getContext('2d');dc.clearRect(0,0,w,h);
+    (saved.strokes||[]).forEach(s=>pjPaintStroke(mc,dc,s));
+    pjMask={node,img,draw,mask,size:saved.size||40,strokes:(saved.strokes||[]).slice(),current:null};
+    if(node.config.size!==`${w}x${h}`){node.config.size=`${w}x${h}`;projectSave();}
+    const toPoint=e=>{
+      const r=draw.getBoundingClientRect();
+      return [Math.round((e.clientX-r.left)/r.width*mask.width),Math.round((e.clientY-r.top)/r.height*mask.height)];
+    };
+    draw.onpointerdown=e=>{
+      e.preventDefault();draw.setPointerCapture(e.pointerId);
+      const s={size:pjMask.size,points:[toPoint(e)]};
+      pjMask.current=s;pjPaintStroke(mc,dc,s);
+    };
+    draw.onpointermove=e=>{
+      if(!pjMask?.current)return;
+      const p=toPoint(e),s=pjMask.current,prev=s.points[s.points.length-1];
+      if(prev[0]===p[0]&&prev[1]===p[1])return;
+      s.points.push(p);
+      pjPaintStroke(mc,dc,{size:s.size,points:[prev,p]});
+    };
+    const up=()=>{
+      if(!pjMask?.current)return;
+      pjMask.strokes.push(pjMask.current);pjMask.current=null;
+      pjSaveMask();
+    };
+    draw.onpointerup=up;draw.onpointercancel=up;
+    if((saved.strokes||[]).length&&!saved.url)pjSaveMask();
+  };
+  if(img.complete&&img.naturalWidth)setup();else img.onload=setup;
+}
+function pjMaskBrush(v){if(pjMask)pjMask.size=Math.max(5,Math.min(200,+v||40));}
+function pjMaskClear(){
+  if(!pjMask)return;
+  const mc=pjMask.mask.getContext('2d'),dc=pjMask.draw.getContext('2d');
+  mc.clearRect(0,0,pjMask.mask.width,pjMask.mask.height);
+  mc.fillStyle='#fff';mc.fillRect(0,0,pjMask.mask.width,pjMask.mask.height);
+  dc.clearRect(0,0,pjMask.draw.width,pjMask.draw.height);
+  pjMask.strokes=[];pjMask.current=null;
+  pjSaveMask();
+  toast('涂抹已清除');
+}
+function pjSaveMask(){
+  if(!pjMask)return;
+  const pr=projectCurrent();const run=pr?.runs?.[projectSkuId];if(!run)return;
+  run.masks=run.masks||{};
+  let url='';
+  try{url=pjMask.mask.toDataURL('image/png');}
+  catch(e){toast('这张图跨域，无法导出涂抹蒙版');return;}
+  run.masks[pjMask.node.id]={size:pjMask.size,strokes:pjMask.strokes,url};
+  projectSave();
+}
+function pjQualityPass(){
+  const pr=projectCurrent(),run=pr&&pjRun(pr,projectSkuId);if(!pr||!run)return;
+  const n=pr.nodes.find(x=>x.id===projectNodeId);
+  if(!n||n.type!=='quality_check')return;
+  if(!pjNodeInput(pr,run,n)){toast('质检节点没有输入图片');return;}
+  run.states=run.states||{};
+  run.states[n.id]='done';
+  projectSave();renderProjects();toast('已标记质检通过');
+}
 function pjZoom(f){pjView.k=Math.min(1.8,Math.max(0.4,pjView.k*f));pjApplyView();}
 function pjFit(exact){
   const flow=$('pj-flow'),pr=projectCurrent();if(!flow||!pr)return;
@@ -1660,7 +1757,7 @@ function pjProjectStatus(pr){
   const runs=Object.values(pr.runs||{});
   if(runs.some(r=>r.status==='running'))return ['blue','运行中'];
   if(runs.some(r=>r.status==='failed'))return ['red','有失败'];
-  const genNodes=pr.nodes.filter(n=>['generate','refine'].includes(n.type));
+  const genNodes=pr.nodes.filter(n=>['generate','refine','process'].includes(n.type));
   if(runs.length&&genNodes.length&&runs.every(r=>genNodes.every(n=>r.states?.[n.id]==='done')))return ['green','已完成'];
   if(runs.some(r=>Object.values(r.states||{}).includes('done')))return ['amber','进行中'];
   return ['gray','待运行'];
@@ -1700,7 +1797,7 @@ function pjComposePrompt(pr,node,sku){
 }
 async function aiWritePrompt(btn){
   const pr=projectCurrent();const node=pr&&pr.nodes.find(n=>n.id===projectNodeId);
-  if(!pr||!node||!['generate','refine'].includes(node.type)){toast('先选中生成节点');return;}
+  if(!pr||!node||!['generate','refine','process'].includes(node.type)){toast('先选中生成/精修/处理节点');return;}
   const p=pById(pr.productId);const sku=p?.skus.find(s=>s.id===projectSkuId);
   const oldText=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='生成中…';}
@@ -1728,9 +1825,10 @@ async function pjGenerateNode(){
   if(!sku){toast('该商品还没有 SKU');return;}
   const run=pr.runs[sku]=pr.runs[sku]||{states:{},outputs:{}};
   run.outputs=run.outputs||{};
+  const GENERATE_TYPES=['generate','refine','process'];
   // 选中了生成节点就用它；否则取第一个还没生成的生成节点
-  let node=pr.nodes.find(n=>n.id===projectNodeId&&['generate','refine'].includes(n.type));
-  if(!node)node=pr.nodes.find(n=>['generate','refine'].includes(n.type)&&run.states?.[n.id]!=='done');
+  let node=pr.nodes.find(n=>n.id===projectNodeId&&GENERATE_TYPES.includes(n.type));
+  if(!node)node=pr.nodes.find(n=>GENERATE_TYPES.includes(n.type)&&run.states?.[n.id]!=='done');
   if(!node){toast('画布里没有待生成的节点');return;}
   if(!(node.config.prompt||'').trim()){
     projectNodeId=node.id;renderProjects();
@@ -1738,21 +1836,29 @@ async function pjGenerateNode(){
     return;
   }
   if(!pjChannelId||!pjModels.length)await pjEnsureModels();
-  // 并行分支：优先用父节点的输出作为参考图（父节点没出图就用商品原图）
-  const parents=pjEdges(pr).filter(e=>e.to===node.id).map(e=>e.from);
-  let ref=null;
-  for(const pid of parents){const out=run.outputs[pid];if(out?.url){ref=out.url;break;}}
+  // 精修/处理必须有一张输入图（父节点输出或商品原图），并且要涂抹修改区域
+  let ref=null,mask=null;
+  if(node.type==='refine'||node.type==='process'){
+    ref=pjNodeInput(pr,run,node);
+    if(!ref){toast('精修/处理需要输入图片：先在它的上游节点生成一张');return;}
+    const m=run.masks?.[node.id];
+    if(!m||!m.strokes||!m.strokes.length){toast('先用画笔涂抹要修改的区域，再生成');return;}
+    mask=m.url;
+  }else{
+    const parents=pjEdges(pr).filter(e=>e.to===node.id).map(e=>e.from);
+    for(const pid of parents){const out=run.outputs[pid];if(out?.url){ref=out.url;break;}}
+  }
   run.status='running';run.current=node.id;run.states[node.id]='running';
   projectSave();renderProjects();
   pjBusy=true;
   try{
-    const res=await pjGenerate(pr,node,sku,ref);
+    const res=await pjGenerate(pr,node,sku,ref,mask);
     const img=(res.images||[])[0]||{};
     if(!img.url)throw new Error('渠道没有返回图片');
     run.outputs[node.id]={url:img.url,model:res.model||node.config.model,latency:res.latency_ms||0,
       nodeId:node.id,label:node.label,at:now(),jobId:res.id};
     run.states[node.id]='done';
-    const pending=pr.nodes.some(n=>['generate','refine'].includes(n.type)&&run.states?.[n.id]!=='done');
+    const pending=pr.nodes.some(n=>['generate','refine','process'].includes(n.type)&&run.states?.[n.id]!=='done');
     run.status=pending?'pending':'done';
     pjAddVersion(pr,sku,run.outputs[node.id],node.label);
     projectSave();renderProjects();
@@ -1813,8 +1919,7 @@ function pjAddNode(){
   const type=$('pj-add-type')?.value||'generate';
   const parent=$('pj-add-parent')?.value||projectNodeId||pr.nodes.find(n=>n.type==='source')?.id||'';
   const id='n_'+Date.now();
-  const config=type==='process'?{operation:'watermark',params:''}
-    :type==='quality_check'?{}
+  const config=type==='quality_check'?{}
     :{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null};
   const count=pr.nodes.filter(n=>n.type===type).length;
   const parentNode=pr.nodes.find(n=>n.id===parent);
@@ -1858,18 +1963,20 @@ function pjNodeTemplate(id){
   const t=tplById(id);n.config.templateId=t?t.id:'';
   n.config.template=t?JSON.parse(JSON.stringify(t)):null;
   if(t)n.config.size=`${t.size_w}x${t.size_h}`;
-  pr.runs={};projectSave();renderProjects();
+  // 模板只影响这个节点，保留其它节点已有结果
+  Object.values(pr.runs||{}).forEach(r=>{if(r.states)delete r.states[n.id];if(r.outputs)delete r.outputs[n.id];});
+  projectSave();renderProjects();
 }
 function pjNodeSummary(n){
-  if(n.type==='generate'||n.type==='refine'){
+  if(['generate','refine','process'].includes(n.type)){
     const bits=[];
     if(n.config.prompt)bits.push('已写提示词');
     if(n.config.model)bits.push(n.config.model);
     if(n.config.size)bits.push(n.config.size);
     if(n.config.template)bits.push('模板：'+n.config.template.name);
+    if((n.type==='refine'||n.type==='process')&&n.config.maskStrokes)bits.push('已涂抹');
     return bits.join(' · ')||'待配置';
   }
-  if(n.type==='process')return (PJ_PROCESS[n.config.operation]||'处理')+(n.config.params?' · '+n.config.params:'');
   if(n.type==='human_review')return '运行到此暂停';
   if(n.type==='source')return '取该 SKU 的商家原图';
   if(n.type==='deliver')return '写入素材库并等待审核';
@@ -1880,40 +1987,55 @@ function pjInspector(pr,p,nodes,skuId){
   const run=pjRun(pr,skuId)||{states:{}};
   const nodeDone=run.states?.[n.id]==='done';
   let body='';
-  if(n.type==='generate'||n.type==='refine'){
+  if(['generate','refine','process'].includes(n.type)){
+    const needInput=n.type!=='generate';
+    const input=needInput?pjNodeInput(pr,run,n):'';
+    const isGen=n.type==='generate';
     body=`<div class="flex" style="gap:8px;align-items:center;margin-bottom:10px">
       <button type="button" class="btn btn-primary btn-sm" onclick="pjGenerateNode()">${nodeDone?'重新生成':'生成图片'}</button>
       <span class="small muted">${nodeDone?'已生成，可改提示词后重新生成':'先写提示词，再点生成'}</span>
     </div>
+    ${needInput?`<div class="field"><label>输入图片</label>
+      ${input?`<div class="pj-mask" id="pj-mask">
+        <img id="pj-mask-img" src="${esc(input)}" alt="输入图片">
+        <canvas id="pj-mask-draw"></canvas>
+      </div>
+      <div class="flex" style="gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <span class="small muted">画笔</span>
+        <input type="range" id="pj-brush" min="10" max="100" value="40" oninput="pjMaskBrush(this.value)" style="width:140px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="pjMaskClear()">清除涂抹</button>
+        <span class="small muted">在图上涂红要修改的区域</span>
+      </div>`:'<div class="notice amber">这个节点需要输入图片：先在它的上游生成一张，再回来精修/处理。</div>'}</div>`:''}
     <div class="flex" style="gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <button type="button" class="btn btn-soft btn-sm" onclick="aiWritePrompt(this)">✨ AI 生成提示词</button>
       <span class="small muted">DeepSeek 根据商品事实与当前模板生成，可再改</span>
     </div>
     <div class="field"><label>提示词</label>
       <textarea class="textarea" id="pj-prompt" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>
-      <div class="row cols-2">
-        <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">
-          ${(pjModels.length?pjModels.map(m=>m.key):(n.config.model?[n.config.model]:[])).map(k=>`<option value="${esc(k)}" ${k===n.config.model?'selected':''}>${esc(k)}</option>`).join('')||'<option value="">未加载到模型</option>'}
-        </select><div class="small muted" id="pj-model-hint">${pjModels.length?`渠道 ${esc(pjChannels.find(c=>c.id===pjChannelId)?.name||'')} · ${pjModels.length} 个生图模型`:'正在读取渠道与模型…'}</div></div>
-        <div class="field"><label>尺寸</label><input class="input" value="${esc(n.config.size||'')}" onchange="pjNodeConfig('size',this.value);renderProjects()"></div>
-      </div>
-      <div class="field"><label>质量</label><select class="select" onchange="pjNodeConfig('quality',this.value);renderProjects()">
-        ${['auto','low','medium','high'].map(q=>`<option value="${q}" ${q===(n.config.quality||'auto')?'selected':''}>${{auto:'自动',low:'低',medium:'中',high:'高'}[q]}</option>`).join('')}
-      </select></div>
-      <p class="small muted">参考图：${(p.images||[]).length?'使用商品档案里的原图（图生图）':'商品没有原图，本次为纯文生图'}</p>
-      <div class="field"><label>版式模板 <span class="small muted" style="font-weight:400">节点级，改动不影响其它节点</span></label>
-        <select class="select" onchange="pjNodeTemplate(this.value)">
-          <option value="">默认 1:1</option>
-          ${protoTemplates.filter(t=>!t.deleted).map(t=>`<option value="${t.id}" ${t.id===n.config.templateId?'selected':''}>${esc(t.name)} · ${t.size_w}×${t.size_h}</option>`).join('')}
-        </select>
-        ${tplPreviewBox(n.config.template)}
-      </div>
-      <p class="small muted">参考图：${pr.sources?.[skuId]?'使用本 SKU 上传的原图':(productSourceImage(p)?'使用商品档案的原始图':'无（纯文生图）')}</p>`;
-  }else if(n.type==='process'){
-    body=`<div class="field"><label>处理操作（白名单）</label>
-      <select class="select" onchange="pjNodeConfig('operation',this.value);renderProjects()">${Object.entries(PJ_PROCESS).map(([k,v])=>`<option value="${k}" ${k===n.config.operation?'selected':''}>${v}</option>`).join('')}</select></div>
-      <div class="field"><label>参数</label><input class="input" value="${esc(n.config.params||'')}" placeholder="如水印文字 / 裁剪比例" onchange="pjNodeConfig('params',this.value);renderProjects()"></div>
-      <p class="small muted">只允许裁剪、拼接、加水印、换文字四种原子操作，不执行脚本。</p>`;
+    <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">
+      ${(pjModels.length?pjModels.map(m=>m.key):(n.config.model?[n.config.model]:[])).map(k=>`<option value="${esc(k)}" ${k===n.config.model?'selected':''}>${esc(k)}</option>`).join('')||'<option value="">未加载到模型</option>'}
+    </select><div class="small muted" id="pj-model-hint">${pjModels.length?`渠道 ${esc(pjChannels.find(c=>c.id===pjChannelId)?.name||'')} · ${pjModels.length} 个生图模型`:'正在读取渠道与模型…'}</div></div>
+    <div class="field"><label>质量</label><select class="select" onchange="pjNodeConfig('quality',this.value);renderProjects()">
+      ${['auto','low','medium','high'].map(q=>`<option value="${q}" ${q===(n.config.quality||'auto')?'selected':''}>${{auto:'自动',low:'低',medium:'中',high:'高'}[q]}</option>`).join('')}
+    </select></div>
+    ${isGen?`<div class="field"><label>尺寸</label><input class="input" value="${esc(n.config.size||'')}" onchange="pjNodeConfig('size',this.value);renderProjects()"></div>
+    <div class="field"><label>版式模板 <span class="small muted" style="font-weight:400">节点级，改动不影响其它节点</span></label>
+      <select class="select" onchange="pjNodeTemplate(this.value)">
+        <option value="">默认 1:1</option>
+        ${protoTemplates.filter(t=>!t.deleted).map(t=>`<option value="${t.id}" ${t.id===n.config.templateId?'selected':''}>${esc(t.name)} · ${t.size_w}×${t.size_h}</option>`).join('')}
+      </select>
+      ${tplPreviewBox(n.config.template)}
+    </div>
+    <p class="small muted">参考图：${pr.sources?.[skuId]?'使用本 SKU 上传的原图':(productSourceImage(p)?'使用商品档案的原始图':'无（纯文生图）')}</p>`:''}
+    `;
+  }else if(n.type==='quality_check'){
+    const input=pjNodeInput(pr,run,n);
+    const done=run.states?.[n.id]==='done';
+    body=input?`<div class="field"><label>输入图片</label>
+        <div class="pj-mask"><img src="${esc(input)}" alt="待质检图片"></div></div>
+      <p class="small muted">检查商品一致性、文字与合规；通过后记录质检状态。</p>
+      ${done?'<p class="small muted">已通过质检。</p>':'<button type="button" class="btn btn-primary btn-sm" onclick="pjQualityPass()">标记质检通过</button>'}`
+      :'<div class="notice amber">质检节点需要输入图片：先在上游生成一张。</div>';
   }else if(n.type==='human_review'){
     const done=run.states?.[n.id]==='done';
     const hasOutput=Object.keys(run.outputs||{}).length>0;
@@ -1999,8 +2121,8 @@ function renderProjects(){
   const skuOpts=p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===projectSkuId?'selected':''}>${esc(skuDisplay(s))}</option>`).join('');
   const st=pjProjectStatus(pr);
   const selNode=pr.nodes.find(n=>n.id===projectNodeId);
-  const genNode=pr.nodes.find(n=>n.type==='generate'||n.type==='refine');
-  const genLabel=selNode&&(selNode.type==='generate'||selNode.type==='refine')&&run.states?.[selNode.id]==='done'?'重新生成':'生成图片';
+  const genNode=pr.nodes.find(n=>['generate','refine','process'].includes(n.type));
+  const genLabel=selNode&&['generate','refine','process'].includes(selNode.type)&&run.states?.[selNode.id]==='done'?'重新生成':'生成图片';
   work.innerHTML=`<div class="project-stack">
     <div class="card"><div class="card-h"><h3>${esc(pr.name)}</h3>
       <span class="flex"><span class="pill ${st[0]}">${st[1]}</span><button class="btn btn-ghost btn-sm" onclick="projectDeleteCurrent()">删除项目</button></span></div>
@@ -2049,6 +2171,7 @@ function renderProjects(){
     ${pjInspector(pr,p,pr.nodes,projectSkuId)}
   </div>`;
   pjBindFlow();
+  pjInitMask();
 }
 const FIELD_SCOPE={
   beauty:{'容量':'generate','成分':'generate','适用说明':'generate','包装多角度图':'delivery'},
