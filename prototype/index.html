@@ -1415,6 +1415,18 @@ function pjEnsureModels(){
   })();
   return pjModelsPromise;
 }
+async function pjUrlToDataUrl(url){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),15000);
+  try{
+    const r=await fetch(url,{credentials:'include',signal:ctrl.signal});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const blob=await r.blob();
+    return await new Promise((resolve,reject)=>{
+      const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=reject;rd.readAsDataURL(blob);
+    });
+  }finally{clearTimeout(timer);}
+}
 async function pjReferenceImage(p,pr,skuId){
   const local=pr?.sources?.[skuId];
   if(local?.dataUrl)return local.dataUrl; // 项目里上传的原图优先
@@ -1478,7 +1490,12 @@ async function pjGenerate(pr,node,skuId,refOverride,mask){
   if(!model)throw new Error('没有可用生图模型');
   const body={channel_id:channelId,model,prompt:node.config.prompt,n:1,
     quality:node.config.quality||'auto',size:node.config.size||'1024x1024',output_format:'png'};
-  const ref=refOverride||await pjReferenceImage(p,pr,skuId);
+  let ref=refOverride||await pjReferenceImage(p,pr,skuId);
+  // 上游拿不到我们服务器上的鉴权图片，统一转成 data URL 再发送
+  if(ref&&!/^data:/i.test(String(ref))){
+    try{ref=await pjUrlToDataUrl(ref);}
+    catch(e){throw new Error('输入图片读取失败（'+(e.message||'网络错误')+'），请重新选择或上传');}
+  }
   if(ref)body.images=[ref];
   if(mask)body.mask=mask;
   return pjApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
