@@ -1517,7 +1517,26 @@ function pjDefaultNodes(){return [
   {id:'n_review',type:'human_review',label:'人工确认',config:{},position:{x:520,y:80}},
   {id:'n_deliver',type:'deliver',label:'交付',config:{},position:{x:760,y:80}},
 ];}
+function pjRepairGraph(pr){
+  const review=pr.nodes.find(n=>n.type==='human_review');
+  if(!review)return;
+  const edges=pjEdges(pr);
+  // 从人工确认可达的节点不能再回接人工确认，避免成环
+  const reachable=new Set([review.id]);
+  const queue=[review.id];
+  while(queue.length){
+    const cur=queue.shift();
+    edges.filter(e=>e.from===cur).forEach(e=>{
+      if(!reachable.has(e.to)){reachable.add(e.to);queue.push(e.to);}
+    });
+  }
+  pr.nodes.filter(n=>['generate','refine','process','quality_check'].includes(n.type)).forEach(n=>{
+    const hasOut=edges.some(e=>e.from===n.id);
+    if(!hasOut&&!reachable.has(n.id))edges.push({from:n.id,to:review.id});
+  });
+}
 function pjEnsurePositions(pr){
+  pjRepairGraph(pr);
   const depths=pjDepths(pr);
   const counters={};
   pr.nodes.forEach(n=>{
@@ -1805,6 +1824,13 @@ function pjAddNode(){
   pr.nodes.push(node);
   const edges=pjEdges(pr);
   if(parent&&parent!==id)edges.push({from:parent,to:id});
+  // 生成/精修/处理/质检默认汇入人工确认（并行分支也会汇合），但不允许从人工确认/交付往回接
+  const review=pr.nodes.find(n=>n.type==='human_review');
+  const parentType=parentNode?.type;
+  if(review&&!['human_review','deliver'].includes(type)&&!['human_review','deliver'].includes(parentType)
+     &&!edges.some(e=>e.from===id&&e.to===review.id)){
+    edges.push({from:id,to:review.id});
+  }
   projectNodeId=id;
   projectSave();renderProjects();
   toast('节点已添加；已有节点的结果会保留');
@@ -1918,7 +1944,7 @@ function pjInspector(pr,p,nodes,skuId){
   }
   const fixed=['source','deliver','human_review'].includes(n.type);
   return `<div class="card"><div class="card-h"><h3>节点设置 · ${PJ_TYPE[n.type]}</h3>
-    <span class="flex">${fixed?'':'<button class="btn btn-ghost btn-sm" onclick="pjDeleteNode()">删除节点</button>'}</span></div>
+    <span class="flex">${fixed?'<span class="small muted">🔒 固定节点，不可删除</span>':'<button class="btn btn-ghost btn-sm" onclick="pjDeleteNode()">删除节点</button>'}</span></div>
     <div class="card-b">${body}</div></div>`;
 }
 function renderProjects(){
@@ -1959,11 +1985,12 @@ function renderProjects(){
     const sub=n.type==='source'
       ?(pr.sources?.[projectSkuId]?'已上传原图 · 图生图':(productSourceImage(p)?'用商品档案原始图':'未上传 · 纯文生图'))
       :pjNodeSummary(n);
+    const fixedMark=['source','human_review','deliver'].includes(n.type)?' · 🔒 固定':'';
     return `<div class="pj-node pj-fnode ${n.id===projectNodeId?'active':''} ${st}" data-id="${n.id}"
       style="left:${n.position.x}px;top:${n.position.y}px">
       <span class="pj-node-type">${PJ_TYPE[n.type]}</span>
       <b>${esc(n.label||PJ_TYPE[n.type])}</b>
-      <span class="pj-node-sub">${parentLabels.length?'接在 '+esc(parentLabels.join('、'))+' · ':''}${esc(sub)}</span>
+      <span class="pj-node-sub">${parentLabels.length?'接在 '+esc(parentLabels.join('、'))+' · ':''}${esc(sub)}${fixedMark}</span>
       ${out?.url?`<img src="${esc(out.url)}" alt="" style="width:100%;height:54px;object-fit:cover;border-radius:6px">`:''}
       <span class="pill ${PJ_ST[st][0]}">${PJ_ST[st][1]}</span>
     </div>`;
