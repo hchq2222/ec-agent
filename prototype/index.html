@@ -1537,6 +1537,38 @@ function pjAdvanceAuto(pr,run){
   }
   if(run.progress>=pr.nodes.length)run.status='done';
 }
+/* 根据商品事实 + 当前模板拼一段提示词（原型不调用文本模型） */
+function pjComposePrompt(pr,node,sku){
+  const p=pById(pr.productId);if(!p)return '';
+  const t=node.config.template;
+  const facts=Object.entries(p.fields||{})
+    .filter(([,f])=>f&&f.v&&f.src==='human').slice(0,8)
+    .map(([k,f])=>`${k}=${f.v}`);
+  const scene=t&&t.background==='scene';
+  const shot=scene?'场景图':'白底商品图';
+  const bg=scene?'真实生活场景背景':t&&t.background&&t.background!=='white'?t.background:'纯白背景';
+  const shadow=t?.shadow==='none'?'不加接地阴影':t?.shadow==='hard'?'明显实投影':'柔和接地阴影';
+  const ratio=Math.round(((t?.subject_ratio)||0.85)*100);
+  const size=t?`，输出 ${t.size_w}×${t.size_h}`:'';
+  const slots=(t?.text_slots||[]).filter(s=>s.text).map(s=>`「${s.text}」`).join('、');
+  const lines=[
+    `商品：${p.brand?p.brand+' ':''}${p.name}${sku?`（${skuDisplay(sku)}）`:''}`,
+    p.pitch?`卖点：${p.pitch}`:'',
+    facts.length?`已确认事实：${facts.join('，')}`:'',
+    `画面：${shot}，${bg}，主体占画面约 ${ratio}%，${shadow}${size}`,
+    slots?`文字：${slots}（文字需可独立替换）`:'',
+    '要求：商品一致性优先，保持形状、颜色、比例、Logo、标签文字与包装细节不变，不重绘商品；只调整背景、光线与构图；不要添加原图不存在的配件或文字。',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+function aiWritePrompt(){
+  const pr=projectCurrent();const node=pr&&pr.nodes.find(n=>n.id===projectNodeId);
+  if(!pr||!node||!['generate','refine'].includes(node.type)){toast('先选中生成节点');return;}
+  const p=pById(pr.productId);const sku=p?.skus.find(s=>s.id===projectSkuId);
+  node.config.prompt=pjComposePrompt(pr,node,sku);
+  projectSave();renderProjects();
+  toast('提示词已生成，可继续修改');
+}
 /* 只执行一个生成节点：先写提示词，再人工点「生成图片」 */
 async function pjGenerateNode(){
   if(pjBusy)return;
@@ -1693,8 +1725,12 @@ function pjInspector(pr,p,nodes,skuId){
       <button type="button" class="btn btn-primary btn-sm" onclick="pjGenerateNode()">${nodeDone?'重新生成':'生成图片'}</button>
       <span class="small muted">${nodeDone?'已生成，可改提示词后重新生成':'先写提示词，再点生成'}</span>
     </div>
+    <div class="flex" style="gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <button type="button" class="btn btn-soft btn-sm" onclick="aiWritePrompt()">✨ AI 生成提示词</button>
+      <span class="small muted">根据商品事实与当前模板整理，可再改</span>
+    </div>
     <div class="field"><label>提示词</label>
-      <textarea class="textarea" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>
+      <textarea class="textarea" id="pj-prompt" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>
       <div class="row cols-2">
         <div class="field"><label>模型</label><select class="select" onchange="pjNodeConfig('model',this.value);renderProjects()">
           ${(pjModels.length?pjModels.map(m=>m.key):(n.config.model?[n.config.model]:[])).map(k=>`<option value="${esc(k)}" ${k===n.config.model?'selected':''}>${esc(k)}</option>`).join('')||'<option value="">未加载到模型</option>'}
