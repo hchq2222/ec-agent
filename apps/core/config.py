@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     planner_api_key: str = ""
     planner_model: str = ""
 
+    # DeepSeek 文本模型（提示词生成 / 商品识别）；配置后优先于 planner_*
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-flash"
+
     log_level: str = "INFO"
 
 

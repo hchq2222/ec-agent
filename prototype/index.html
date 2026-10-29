@@ -1561,13 +1561,27 @@ function pjComposePrompt(pr,node,sku){
   ];
   return lines.filter(Boolean).join('\n');
 }
-function aiWritePrompt(){
+async function aiWritePrompt(btn){
   const pr=projectCurrent();const node=pr&&pr.nodes.find(n=>n.id===projectNodeId);
   if(!pr||!node||!['generate','refine'].includes(node.type)){toast('先选中生成节点');return;}
   const p=pById(pr.productId);const sku=p?.skus.find(s=>s.id===projectSkuId);
-  node.config.prompt=pjComposePrompt(pr,node,sku);
+  const oldText=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='生成中…';}
+  let source='local',err='';
+  if(isUuid(pr.productId)){
+    try{
+      const r=await fetch(`${GS_API}/api/ai/prompt`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({product_id:pr.productId,sku_id:projectSkuId||null,template:node.config.template||null}),
+      });
+      const body=await r.json().catch(()=>({}));
+      if(!r.ok||!body.data?.prompt)throw new Error(body.detail||`HTTP ${r.status}`);
+      node.config.prompt=body.data.prompt;source='deepseek';
+    }catch(e){err=e.message||'请求失败';}
+  }
+  if(source!=='deepseek')node.config.prompt=pjComposePrompt(pr,node,sku);
   projectSave();renderProjects();
-  toast('提示词已生成，可继续修改');
+  toast(source==='deepseek'?'DeepSeek 已生成提示词，可继续修改':`AI 不可用（${err||'本地商品'}），已用本地模板生成`);
 }
 /* 只执行一个生成节点：先写提示词，再人工点「生成图片」 */
 async function pjGenerateNode(){
@@ -1726,8 +1740,8 @@ function pjInspector(pr,p,nodes,skuId){
       <span class="small muted">${nodeDone?'已生成，可改提示词后重新生成':'先写提示词，再点生成'}</span>
     </div>
     <div class="flex" style="gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-      <button type="button" class="btn btn-soft btn-sm" onclick="aiWritePrompt()">✨ AI 生成提示词</button>
-      <span class="small muted">根据商品事实与当前模板整理，可再改</span>
+      <button type="button" class="btn btn-soft btn-sm" onclick="aiWritePrompt(this)">✨ AI 生成提示词</button>
+      <span class="small muted">DeepSeek 根据商品事实与当前模板生成，可再改</span>
     </div>
     <div class="field"><label>提示词</label>
       <textarea class="textarea" id="pj-prompt" rows="5" placeholder="写清楚画面、用途与一致性约束" onchange="pjNodeConfig('prompt',this.value)">${esc(n.config.prompt||'')}</textarea></div>

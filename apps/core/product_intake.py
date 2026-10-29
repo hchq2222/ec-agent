@@ -179,8 +179,12 @@ async def extract_product(
     database: Any,
 ) -> dict[str, Any]:
     settings = get_settings()
-    if not all((settings.planner_base_url, settings.planner_api_key, settings.planner_model)):
-        raise ProductIntakeError("未配置 PLANNER_BASE_URL、PLANNER_API_KEY 或 PLANNER_MODEL")
+    base_url = settings.deepseek_base_url or settings.planner_base_url
+    api_key = settings.deepseek_api_key or settings.planner_api_key
+    model_key = settings.deepseek_model or settings.planner_model
+    provider_id = "deepseek" if settings.deepseek_api_key else "planner"
+    if not all((base_url, api_key, model_key)):
+        raise ProductIntakeError("未配置 DeepSeek（或 PLANNER_*）文本模型")
     if not message.strip() and not files:
         raise ProductIntakeError("请发一段文字、商品图片或资料页")
     if len(files) > 6:
@@ -205,8 +209,8 @@ async def extract_product(
     job_id = uuid.uuid4()
     async with database.session() as session:
         session.add(Job(
-            id=job_id, kind="product_intake", model_key=settings.planner_model,
-            provider_id="planner", status="running", n=1,
+            id=job_id, kind="product_intake", model_key=model_key,
+            provider_id=provider_id, status="running", n=1,
             params={"product_id": (existing or {}).get("id"), "files": [f[0] for f in files]},
         ))
         await session.commit()
@@ -216,14 +220,14 @@ async def extract_product(
     error: Exception | None = None
     raw: dict[str, Any] | None = None
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=240) as client:
             response = await client.post(
-                settings.planner_base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": f"Bearer {settings.planner_api_key}"},
+                base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
                 json={
-                    "model": settings.planner_model,
+                    "model": model_key,
                     "temperature": 0.1,
-                    "max_tokens": 3000,
+                    "max_tokens": 6000,
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": content},
@@ -252,8 +256,8 @@ async def extract_product(
         except (TypeError, ValueError):
             units = 0
         session.add(ProviderCall(
-            job_id=job_id, provider_id="planner", model_key=settings.planner_model,
-            upstream_model=settings.planner_model, unit="token", units=units,
+            job_id=job_id, provider_id=provider_id, model_key=model_key,
+            upstream_model=model_key, unit="token", units=units,
             unit_price=None, amount=None, currency="USD", status=status, usage=usage,
         ))
         await session.commit()

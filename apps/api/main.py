@@ -689,3 +689,5 @@ from .templates import router as templates_router  # noqa: E402
 app.include_router(templates_router)
 from .trash import router as trash_router  # noqa: E402
 app.include_router(trash_router)
+from .ai import router as ai_router  # noqa: E402
+app.include_router(ai_router)
