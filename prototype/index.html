@@ -1221,6 +1221,7 @@ try{
   saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
 }catch(e){}
 const pById=id=>products.find(p=>p.id===id);
+const isUuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value||''));
 function productSourceImage(p){
   if(!p)return '';
   if(p.imageGroups)return p.imageGroups.source?.[0]||'';
@@ -2112,6 +2113,19 @@ function renderProductList(){
 async function deleteProduct(pid){
   const p=pById(pid);if(!p)return;
   if(!(await uiConfirm(`删除商品「${p.name}」？关联项目会一起进回收站，可在 设置 → 回收站 恢复。`)))return;
+  // 服务器商品先软删；本地示例商品（非 UUID）只做本地回收站
+  if(isUuid(p.id)){
+    try{
+      const r=await fetch(`${GS_API}/api/products/${p.id}`,{method:'DELETE'});
+      if(!r.ok&&r.status!==404){
+        const body=await r.json().catch(()=>({}));
+        throw new Error(body.detail||`HTTP ${r.status}`);
+      }
+    }catch(e){
+      toast('服务器删除失败：'+(e.message||'网络错误'));
+      return;
+    }
+  }
   trashPush('product',p.id,p.name,p);
   for(let i=projectPrototypes.length-1;i>=0;i--){
     const pr=projectPrototypes[i];
@@ -3572,9 +3586,21 @@ function renderTrash(){
     <button type="button" class="btn btn-ghost btn-sm" onclick="trashRestore(${i})">恢复</button>
   </div>`).join(''):'<p class="small muted">回收站是空的。</p>';
 }
-function trashRestore(i){
+async function trashRestore(i){
   const t=protoTrash[i];if(!t)return;
   if(t.type==='product'){
+    if(isUuid(t.id)){
+      try{
+        const r=await fetch(`${GS_API}/api/products/${t.id}/restore`,{method:'POST'});
+        if(!r.ok&&r.status!==404){
+          const body=await r.json().catch(()=>({}));
+          throw new Error(body.detail||`HTTP ${r.status}`);
+        }
+      }catch(e){
+        toast('服务器恢复失败：'+(e.message||'网络错误'));
+        return;
+      }
+    }
     if(!products.some(p=>p.id===t.id)){products.push(t.data);saveProducts();}
   }else if(t.type==='project'){
     if(!projectPrototypes.some(p=>p.id===t.id)){projectPrototypes.unshift(t.data);projectSave();}
