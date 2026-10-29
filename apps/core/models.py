@@ -312,9 +312,58 @@ class LayoutTemplate(Base):
     background: Mapped[str] = mapped_column(String(32), default="white", nullable=False)
     text_slots: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     logo_slot: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    ref_image: Mapped[str] = mapped_column(Text, default="", nullable=False)
     builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     builtin_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class CanvasProject(Base):
+    """原型项目画布：节点、连线、运行结果、每 SKU 输入/蒙版都存 canvas JSON。"""
+
+    __tablename__ = "canvas_project"
+    __table_args__ = (
+        Index("ix_canvas_project_status", "status"),
+        Index("ix_canvas_project_product", "product_ref"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    product_ref: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    name: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    canvas: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class AssetVersion(Base):
+    """一个项目画布交付生成一个版本；status 即审核状态，人工删除/回滚才删。"""
+
+    __tablename__ = "asset_version"
+    __table_args__ = (
+        Index("ix_asset_version_product", "product_ref"),
+        Index("ix_asset_version_project", "project_id"),
+        Index("ix_asset_version_created", "created_at"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    product_ref: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="待确认", nullable=False)
+    images: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    note: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

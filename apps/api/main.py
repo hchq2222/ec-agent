@@ -691,3 +691,7 @@ from .trash import router as trash_router  # noqa: E402
 app.include_router(trash_router)
 from .ai import router as ai_router  # noqa: E402
 app.include_router(ai_router)
+from .canvas import router as canvas_router  # noqa: E402
+app.include_router(canvas_router)
+from .versions import router as versions_router  # noqa: E402
+app.include_router(versions_router)

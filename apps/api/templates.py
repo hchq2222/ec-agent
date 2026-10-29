@@ -43,6 +43,7 @@ def template_out(t: LayoutTemplate) -> dict[str, Any]:
         "background": t.background,
         "text_slots": t.text_slots or [],
         "logo_slot": t.logo_slot or {},
+        "ref_image": t.ref_image or "",
         "builtin": t.builtin,
         "builtin_key": t.builtin_key,
         "version": t.version,
@@ -110,6 +111,7 @@ async def restore_builtins() -> dict[str, Any]:
                 for key, value in item.items():
                     setattr(t, key, value)
                 t.builtin = True
+                t.ref_image = ""
                 t.deleted_at = None
                 t.updated_at = utcnow()
                 t.version += 1

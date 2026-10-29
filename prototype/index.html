@@ -1287,30 +1287,48 @@ const BUILTIN_LAYOUTS=[
   {key:'detail-3x4-900',name:'细节图 3:4',category:'all',size_w:900,size_h:1200,subject_ratio:0.78,shadow:'none',background:'white',
     text_slots:[{id:'caption',text:'说明文字',x:0.08,y:0.86,w:0.84,h:0.10,font_size:28,color:'#1f2430',align:'center'}],logo_slot:{}},
 ];
-const protoTemplates=(()=>{
-  let saved=null;try{saved=JSON.parse(localStorage.getItem('proto.templates')||'null');}catch(e){saved=null;}
-  if(!Array.isArray(saved)||!saved.length){
-    return BUILTIN_LAYOUTS.map(t=>({...t,id:'tpl_'+t.key,builtin:true,deleted:false,version:1,builtin_key:t.key}));
-  }
-  return saved;
-})();
+let protoTemplates=[];
 function tplSave(){try{localStorage.setItem('proto.templates',JSON.stringify(protoTemplates));}catch(e){}}
 function tplById(id){return protoTemplates.find(t=>t.id===id&&!t.deleted)||null;}
-function tplPushToTrash(t){trashPush('template',t.id,t.name,t);}
+async function loadTemplates(){
+  try{
+    const res=await pjApi('/api/templates');
+    const server=(res.data||[]).map(t=>({...t,refImage:t.ref_image||''}));
+    // 首次把 localStorage 里的自建模板迁移到数据库
+    let local=[];try{local=JSON.parse(localStorage.getItem('proto.templates')||'[]');}catch(e){}
+    const names=new Set(server.map(t=>t.name));
+    for(const t of local){
+      if(!t||t.builtin||!t.name||names.has(t.name))continue;
+      try{
+        const r=await pjApi('/api/templates',{method:'POST',body:JSON.stringify({
+          name:t.name,category:t.category||'all',size_w:t.size_w||800,size_h:t.size_h||800,
+          subject_ratio:t.subject_ratio||0.85,shadow:t.shadow||'soft',background:t.background||'white',
+          text_slots:t.text_slots||[],logo_slot:t.logo_slot||{},
+          ref_image:(t.refImages&&t.refImages[0])||t.ref_image||'',
+        })});
+        server.push({...r.data,refImage:r.data.ref_image||''});
+        names.add(t.name);
+      }catch(e){}
+    }
+    protoTemplates.splice(0,protoTemplates.length,...server);
+    renderTemplates();renderProjects();
+  }catch(e){}
+}
 async function tplDelete(id){
   const t=protoTemplates.find(x=>x.id===id);if(!t)return;
-  if(!(await uiConfirm(`删除模板「${t.name}」？可在 设置 → 回收站 恢复。`)))return;
-  t.deleted=true;tplPushToTrash(t);tplSave();renderTemplates();renderProjects();toast('模板已移入回收站');
+  if(!(await uiConfirm(`删除模板「${t.name}」？删除后可从内置模板恢复。`)))return;
+  try{
+    await pjApi(`/api/templates/${id}`,{method:'DELETE'});
+    await loadTemplates();
+    toast('模板已删除');
+  }catch(e){toast('删除失败：'+(e.message||'网络错误'));}
 }
-function tplRestoreBuiltins(){
-  let restored=0;
-  BUILTIN_LAYOUTS.forEach(b=>{
-    const hit=protoTemplates.find(t=>t.builtin_key===b.key||t.id==='tpl_'+b.key);
-    if(hit){Object.assign(hit,b,{deleted:false,builtin:true,version:(hit.version||1)+1});}
-    else protoTemplates.push({...b,id:'tpl_'+b.key,builtin:true,deleted:false,version:1,builtin_key:b.key});
-    restored++;
-  });
-  tplSave();renderTemplates();renderProjects();toast(`已恢复 ${restored} 个内置模板`);
+async function tplRestoreBuiltins(){
+  try{
+    const r=await pjApi('/api/templates/restore-builtins',{method:'POST'});
+    await loadTemplates();
+    toast(`已恢复 ${r.data?.restored||0} 个内置模板`);
+  }catch(e){toast('恢复失败：'+(e.message||'网络错误'));}
 }
 function tplPreviewBox(t){
   if(!t)return '<span class="small muted">未选模板：按 1:1 出图</span>';
@@ -1369,20 +1387,22 @@ function tplPreviewLive(){
     ${slots.map(s=>`<span class="tpl-slot" style="left:${(s.x||0)*100}%;top:${(s.y||0)*100}%;width:${(s.w||0.4)*100}%;height:${(s.h||0.1)*100}%;color:${s.color||'#1f2430'}">${esc(s.text||'文字')}</span>`).join('')}
   </div>`;
 }
-function saveTplForm(){
+async function saveTplForm(){
   let slots=[];try{slots=JSON.parse($('tpl-slots').value||'[]');}catch(e){toast('文字槽位必须是合法 JSON');return;}
   if(!Array.isArray(slots)){toast('文字槽位必须是数组');return;}
   const name=$('tpl-name').value.trim();if(!name){toast('先填模板名称');return;}
   const fields={name,category:$('tpl-cat').value,size_w:+$('tpl-w').value||800,size_h:+$('tpl-h').value||800,
     subject_ratio:Math.min(1,Math.max(0.1,(+$('tpl-ratio').value||85)/100)),shadow:$('tpl-shadow').value,
     background:'white',text_slots:slots,logo_slot:{}};
-  if(editingTplId){
-    const t=protoTemplates.find(x=>x.id===editingTplId);
-    if(t){Object.assign(t,fields);t.version=(t.version||1)+1;}
-  }else{
-    protoTemplates.push({...fields,id:'tpl_'+Date.now(),builtin:false,builtin_key:null,deleted:false,version:1});
-  }
-  tplSave();closeModal('tpl-modal');renderTemplates();renderProjects();toast('模板已保存');
+  try{
+    if(editingTplId){
+      await pjApi(`/api/templates/${editingTplId}`,{method:'PATCH',body:JSON.stringify(fields)});
+    }else{
+      await pjApi('/api/templates',{method:'POST',body:JSON.stringify({...fields,ref_image:''})});
+    }
+    closeModal('tpl-modal');await loadTemplates();
+    toast('模板已保存到服务器');
+  }catch(e){toast('保存失败：'+(e.message||'网络错误'));}
 }
 
 /* ============ 项目：画布工作区（本地原型） ============ */
@@ -1520,7 +1540,8 @@ async function pjGenerate(pr,node,skuId,refOverride,mask){
   // 模板里的参考图也一起作为参考（可选）
   const refs=[];
   if(ref)refs.push(ref);
-  (node.config.template?.refImages||[]).forEach(u=>{if(u&&!refs.includes(u))refs.push(u);});
+  const tplRef=node.config.template?.ref_image||node.config.template?.refImage;
+  (tplRef?[tplRef]:(node.config.template?.refImages||[])).forEach(u=>{if(u&&!refs.includes(u))refs.push(u);});
   const alreadyData=refs.filter(u=>/^data:/i.test(String(u)));
   const toLoad=refs.filter(u=>!/^data:/i.test(String(u)));
   // 上游拿不到我们服务器上的鉴权图片，统一转成 data URL 再发送
@@ -1578,8 +1599,58 @@ async function pjInputUpload(input){
     pjSetInput(url);
   }catch(e){toast('图片读取失败，换 JPG/PNG 再试');}
 }
-function projectSave(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('原型存储空间不足，本次修改可能无法保存');}}
+function canvasOf(pr){return {nodes:pr.nodes||[],edges:pr.edges||[],runs:pr.runs||{},sources:pr.sources||{},masks:pr.masks||{},inputs:pr.inputs||{}};}
+function saveProjectsLocal(){try{localStorage.setItem('proto.projects2',JSON.stringify(projectPrototypes));}catch(e){toast('本地缓存空间不足，修改仍会尝试写服务器');}}
+const pjSyncTimers={};
+async function syncProject(pr){
+  const body={name:pr.name,canvas:canvasOf(pr)};
+  try{
+    await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify(body)});
+  }catch(e){
+    try{
+      await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+        id:pr.id,product_ref:pr.productId,name:pr.name,canvas:canvasOf(pr),
+      })});
+    }catch(e2){}
+  }
+}
+function scheduleProjectSync(pr){
+  if(!pr)return;
+  clearTimeout(pjSyncTimers[pr.id]);
+  pjSyncTimers[pr.id]=setTimeout(()=>syncProject(pr),400);
+}
+function projectSave(){saveProjectsLocal();const pr=projectCurrent();if(pr)scheduleProjectSync(pr);}
 function projectCurrent(){return projectPrototypes.find(x=>x.id===projectId)||null;}
+async function loadCanvasProjects(){
+  try{
+    const res=await pjApi('/api/canvas-projects?status=active');
+    const server=(res.data||[]).map(s=>({...((s.canvas)||{}),id:s.id,productId:s.product_ref,name:s.name}));
+    const ids=new Set(server.map(x=>x.id));
+    // 首次把 localStorage 里的项目迁移到数据库
+    for(const lp of [...projectPrototypes]){
+      if(ids.has(lp.id))continue;
+      try{
+        await pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+          id:lp.id,product_ref:lp.productId,name:lp.name,canvas:canvasOf(lp),
+        })});
+        server.push(lp);
+      }catch(e){}
+    }
+    projectPrototypes.splice(0,projectPrototypes.length,...server);
+    if(!projectPrototypes.some(p=>p.id===projectId))projectId=projectPrototypes[0]?.id||'';
+    saveProjectsLocal();renderProjects();
+  }catch(e){}
+}
+async function deleteCanvasProjectApi(id){
+  try{await pjApi(`/api/canvas-projects/${id}`,{method:'DELETE'});return true;}
+  catch(e){return false;}
+}
+async function restoreCanvasProject(id){
+  try{
+    await pjApi(`/api/canvas-projects/${id}/restore`,{method:'POST'});
+    await loadCanvasProjects();renderTrash();toast('项目已恢复为进行中');
+  }catch(e){toast('恢复失败：'+(e.message||'网络错误'));}
+}
 /* 页面刷新/请求中断后，持久化的「运行中」会永远卡住，启动时统一改成可重试的失败态 */
 projectPrototypes.forEach(pr=>{
   Object.values(pr.runs||{}).forEach(r=>{
@@ -1791,22 +1862,38 @@ function pjSaveMask(){
   run.masks[pjMask.node.id]={size:pjMask.size,strokes:pjMask.strokes,url};
   projectSave();
 }
-function pjDeliver(){
+async function pjDeliver(){
   const pr=projectCurrent(),p=pr&&pById(pr.productId);if(!pr||!p)return;
+  const review=pr.nodes.find(n=>n.type==='human_review');
+  const runs=Object.values(pr.runs||{});
+  if(!review||!runs.length||!runs.every(r=>r.states?.[review.id]==='done')){
+    toast('必须先通过「人工确认」，才能交付');
+    return;
+  }
   const urls=[];
-  Object.values(pr.runs||{}).forEach(r=>{
+  runs.forEach(r=>{
     Object.values(r.outputs||{}).forEach(o=>{if(o?.url&&!urls.includes(o.url))urls.push(o.url);});
   });
   if(!urls.length){toast('还没有生成图片');return;}
-  versions.push({v:versions.length+1,img:urls[0],images:urls,title:p.short||p.name,bg:'white',
-    status:'待确认',note:`项目 ${pr.name} · ${urls.length} 张`,who:OPERATOR,at:now(),projectId:pr.id});
   const deliver=pr.nodes.find(n=>n.type==='deliver');
-  Object.values(pr.runs||{}).forEach(r=>{
+  runs.forEach(r=>{
     r.states=r.states||{};
     if(deliver)r.states[deliver.id]='done';
   });
-  projectSave();renderVersions();renderProjects();
-  toast(`已交付 ${urls.length} 张，合并为素材库版本 v${versions.length}`);
+  try{
+    await pjApi('/api/versions',{method:'POST',body:JSON.stringify({
+      product_ref:p.id,project_id:pr.id,title:p.short||p.name,images:urls,
+      note:`项目 ${pr.name} · ${urls.length} 张`,
+    })});
+    await pjApi(`/api/canvas-projects/${pr.id}`,{method:'PUT',body:JSON.stringify({
+      status:'delivered',hidden:true,canvas:canvasOf(pr),
+    })});
+    const i=projectPrototypes.findIndex(x=>x.id===pr.id);if(i>=0)projectPrototypes.splice(i,1);
+    projectId=projectPrototypes[0]?.id||'';saveProjectsLocal();
+    await loadVersions();renderProjects();
+    toast(`已交付 ${urls.length} 张并归档；可在素材库回滚或回收站恢复`);
+    go('assets');
+  }catch(e){toast('交付失败：'+(e.message||'网络错误'));}
 }
 function pjQualityPass(){
   const pr=projectCurrent(),run=pr&&pjRun(pr,projectSkuId);if(!pr||!run)return;
@@ -1839,6 +1926,9 @@ function projectCreateFromSelector(){
   projectPrototypes.unshift(item);
   projectId=item.id;projectNodeId='n_gen';projectSkuId=product.skus[0]?.id||'';
   pjView={x:30,y:20,k:1};pjFitFor=null;
+  pjApi('/api/canvas-projects',{method:'POST',body:JSON.stringify({
+    id:item.id,product_ref:item.productId,name:item.name,canvas:canvasOf(item),
+  })}).catch(()=>{});
   projectSave();renderProjects();toast('项目已创建，画布已铺好默认流程');
 }
 function projectOpen(id){
@@ -1856,9 +1946,10 @@ function projectSelectSku(id){projectSkuId=id;renderProjects();}
 async function projectDeleteCurrent(){
   const pr=projectCurrent();if(!pr)return;
   if(!(await uiConfirm(`删除项目「${pr.name}」？可在 设置 → 回收站 恢复。`)))return;
-  trashPush('project',pr.id,pr.name,pr);
+  const ok=await deleteCanvasProjectApi(pr.id);
+  if(!ok)trashPush('project',pr.id,pr.name,pr); // 老本地项目兜底
   const i=projectPrototypes.findIndex(x=>x.id===pr.id);if(i>=0)projectPrototypes.splice(i,1);
-  projectId=projectPrototypes[0]?.id||'';projectSave();renderProjects();toast('项目已移入回收站');
+  projectId=projectPrototypes[0]?.id||'';saveProjectsLocal();renderProjects();toast('项目已移入回收站');
 }
 function pjProjectStatus(pr){
   const runs=Object.values(pr.runs||{});
@@ -2143,9 +2234,9 @@ function pjInspector(pr,p,nodes,skuId){
     ${!isGen?`<div class="field"><label>模板（可选）<span class="small muted" style="font-weight:400">带参考图的模板会一起发给模型</span></label>
       <select class="select" onchange="pjNodeTemplate(this.value)">
         <option value="">不使用模板</option>
-        ${protoTemplates.filter(t=>!t.deleted).map(t=>`<option value="${t.id}" ${t.id===n.config.templateId?'selected':''}>${esc(t.name)}${t.refImages?.length?' · 参考图'+t.refImages.length:''}</option>`).join('')}
+        ${protoTemplates.filter(t=>!t.deleted).map(t=>`<option value="${t.id}" ${t.id===n.config.templateId?'selected':''}>${esc(t.name)}${(t.ref_image||t.refImage)?' · 参考图1':''}</option>`).join('')}
       </select>
-      ${n.config.template?.refImages?.length?`<div class="flex" style="gap:6px;margin-top:8px;flex-wrap:wrap">${n.config.template.refImages.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line)">`).join('')}</div>`:''}
+      ${(n.config.template?.ref_image||n.config.template?.refImage)?`<div class="flex" style="gap:6px;margin-top:8px"><img src="${esc(n.config.template.ref_image||n.config.template.refImage)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line)"></div>`:''}
     </div>`:''}
     `;
   }else if(n.type==='quality_check'){
@@ -2182,12 +2273,17 @@ function pjInspector(pr,p,nodes,skuId){
       </div>
       <p class="small muted" style="margin-top:8px">图片压缩到 1280px 保存在本地，生成时作为参考图（图生图）。</p>`;
   }else{
-    const outputs=Object.values(run.outputs||{}).filter(o=>o?.url);
+    const allOutputs=[];
+    Object.values(pr.runs||{}).forEach(r=>Object.values(r.outputs||{}).forEach(o=>{if(o?.url&&!allOutputs.includes(o.url))allOutputs.push(o.url);}));
     const delivered=run.states?.[n.id]==='done';
-    body=`<p class="small muted">确认交付后，画布里当前项目所有已生成图片会合并成 <b>一个素材库版本</b>（不需要逐张确认）。</p>
-      <p class="small">当前可交付：<b>${outputs.length}</b> 张</p>
+    const reviewNode=pr.nodes.find(x=>x.type==='human_review');
+    const allRuns=Object.values(pr.runs||{});
+    const reviewDone=!!reviewNode&&allRuns.length>0&&allRuns.every(r=>r.states?.[reviewNode.id]==='done');
+    body=`<p class="small muted">确认交付后，项目所有已生成图片会合并成 <b>一个素材库版本</b>，项目随后归档隐藏。</p>
+      <p class="small">当前可交付：<b>${allOutputs.length}</b> 张</p>
+      ${!reviewDone?'<div class="notice amber">必须先通过「人工确认」，才能交付。</div>':''}
       ${delivered?'<p class="small muted">已确认交付，可在素材库查看该版本。</p>'
-        :`<button type="button" class="btn btn-primary btn-sm" onclick="pjDeliver()" ${outputs.length?'':'disabled'}>确认交付</button>`}`;
+        :`<button type="button" class="btn btn-primary btn-sm" onclick="pjDeliver()" ${reviewDone&&allOutputs.length?'':'disabled'}>确认交付</button>`}`;
   }
   const fixed=['source','deliver','human_review'].includes(n.type);
   return `<div class="card"><div class="card-h"><h3>节点设置 · ${PJ_TYPE[n.type]}</h3>
@@ -2395,10 +2491,20 @@ const DELIVERY_MIN={s11:24,s12:21};
 const FIRST_PASS={pass:17,total:25};
 
 /* 版本（森序 · 青绿 150ml · 淘宝主图）。同一时刻只有一个「已确认」作为交付版本 */
-const versions=[
-  {v:1,price:129,title:'氨基酸洁面乳',bg:'bath',status:'已过期',note:'初版',who:OPERATOR,at:'10-20 18:40'},
-  {v:2,price:129,title:'氨基酸洁面乳',bg:'plant',status:'已确认',note:'背景改为植物场景（局部重做）',who:OPERATOR,at:'10-21 11:05'},
-];
+let versions=[];
+async function loadVersions(){
+  try{
+    const res=await pjApi('/api/versions');
+    const rows=(res.data||[]).slice().sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    versions=rows.map((x,i)=>({
+      id:x.id,v:i+1,title:x.title,status:x.status,images:x.images||[],
+      img:(x.images||[])[0]||'',note:x.note||'',who:OPERATOR,
+      at:String(x.created_at||'').slice(5,16).replace('T',' '),
+      projectId:x.project_id,productRef:x.product_ref,
+    }));
+    renderVersions();
+  }catch(e){}
+}
 const audit=[
   {obj:'主图 v2',op:'局部重做 · 背景',from:'浴室',to:'植物',who:OPERATOR,at:'10-21 11:05'},
   {obj:'主图 v2',op:'确认交付',from:'v1',to:'v2',who:OPERATOR,at:'10-21 11:20'},
@@ -2609,7 +2715,11 @@ async function deleteProduct(pid){
   trashPush('product',p.id,p.name,p);
   for(let i=projectPrototypes.length-1;i>=0;i--){
     const pr=projectPrototypes[i];
-    if(pr.productId===pid){trashPush('project',pr.id,pr.name,pr);projectPrototypes.splice(i,1);}
+    if(pr.productId===pid){
+      const ok=await deleteCanvasProjectApi(pr.id);
+      if(!ok)trashPush('project',pr.id,pr.name,pr);
+      projectPrototypes.splice(i,1);
+    }
   }
   const at=products.findIndex(x=>x.id===pid);if(at>=0)products.splice(at,1);
   saveProducts();projectSave();
@@ -4014,20 +4124,30 @@ function renderVersions(){
       </span>
       <span class="flex" style="flex-direction:column;gap:6px">
         ${v.status==='待确认'?`<button type="button" class="btn btn-soft btn-sm" onclick="setVersion(${v.v},'已确认')">确认交付</button><button type="button" class="btn btn-ghost btn-sm" onclick="setVersion(${v.v},'已驳回')">驳回</button>`:''}
-        ${v.status==='已过期'?`<button type="button" class="btn btn-ghost btn-sm" onclick="setVersion(${v.v},'已确认')">回滚为交付版本</button>`:''}
+        <button type="button" class="btn btn-ghost btn-sm" onclick="rollbackVersion(${v.v})">回滚</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="exportVersion(${v.v})">导出</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="saveVersionAsTemplate(${v.v})">存为模板</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="deleteVersion(${v.v})">删除</button>
       </span>
-    </div>`).join('')+'<div class="notice" style="margin-top:10px">新确认会让旧版本过期；删除进回收站，原图不物理删除。</div>';
+    </div>`).join('')+'<div class="notice" style="margin-top:10px">允许多个「已确认」版本并存；只有人工删除或回滚才会删除版本。回滚会把项目恢复为进行中。</div>';
 }
 async function deleteVersion(n){
-  const v=versions.find(x=>x.v===n);if(!v)return;
-  if(!(await uiConfirm(`删除素材 v${n}？可在 设置 → 回收站 恢复。`)))return;
-  v.deleted=true;
-  trashPush('asset','v'+n,`素材 v${n} · ${v.note||''}`,{v:n});
-  audit.push({obj:`素材 v${n}`,op:'删除素材',from:v.status,to:'回收站',who:OPERATOR,at:now()});
-  refreshAll();toast('素材已移入回收站');
+  const v=versions.find(x=>x.v===n);if(!v?.id)return;
+  if(!(await uiConfirm(`删除版本 v${n}？版本与审核记录会被删除。`)))return;
+  try{
+    await pjApi(`/api/versions/${v.id}`,{method:'DELETE'});
+    await loadVersions();
+    toast('版本已删除');
+  }catch(e){toast('删除失败：'+(e.message||'网络错误'));}
+}
+async function rollbackVersion(n){
+  const v=versions.find(x=>x.v===n);if(!v?.id)return;
+  if(!(await uiConfirm(`回滚 v${n}？当前版本与审核会被删除，项目恢复到进行中（确认/交付节点重置）。`)))return;
+  try{
+    await pjApi(`/api/versions/${v.id}/rollback`,{method:'POST'});
+    await Promise.all([loadVersions(),loadCanvasProjects()]);
+    toast('已回滚：版本已删除，项目已恢复为进行中');
+  }catch(e){toast('回滚失败：'+(e.message||'网络错误'));}
 }
 function exportVersion(n){
   const v=versions.find(x=>x.v===n);if(!v)return;
@@ -4049,20 +4169,24 @@ async function saveVersionAsTemplate(n){
     img=await uiPickImage(imgs);
     if(!img)return;
   }
-  const t={id:'tpl_v'+Date.now(),name:`${v.title||'项目'} · v${v.v} 模板`,category:'all',
-    size_w:1024,size_h:1024,subject_ratio:0.85,shadow:'soft',background:'scene',
-    text_slots:[],logo_slot:{},refImages:[img],builtin:false,builtin_key:null,
-    deleted:false,version:1};
-  protoTemplates.push(t);tplSave();renderTemplates();renderProjects();
-  toast('已保存为模板（1 张参考图），可在生成/精修/处理节点选用');
+  try{
+    await pjApi('/api/templates',{method:'POST',body:JSON.stringify({
+      name:`${v.title||'项目'} · v${v.v} 模板`,category:'all',
+      size_w:1024,size_h:1024,subject_ratio:0.85,shadow:'soft',background:'scene',
+      text_slots:[],logo_slot:{},ref_image:img,
+    })});
+    await loadTemplates();
+    toast('已保存为模板（1 张参考图），可在生成/精修/处理节点选用');
+  }catch(e){toast('保存模板失败：'+(e.message||'网络错误'));}
 }
-function setVersion(n,to){
-  const v=versions.find(x=>x.v===n), prev=versions.find(x=>x.status==='已确认');
-  if(to==='已确认'&&prev&&prev!==v)prev.status='已过期';
-  audit.push({obj:'主图 v'+n,op:to==='已确认'?(v.status==='已过期'?'回滚为交付版本':'确认交付'):'驳回',from:v.status,to,who:OPERATOR,at:now()});
-  v.status=to;
-  if(canvasMode!=='layer'||!isDirty())resetCanvas();
-  refreshAll();
+async function setVersion(n,to){
+  const v=versions.find(x=>x.v===n);if(!v?.id)return;
+  try{
+    const r=await pjApi(`/api/versions/${v.id}`,{method:'PATCH',body:JSON.stringify({status:to})});
+    v.status=r.data.status;
+    renderVersions();
+    toast(to==='已确认'?'已确认该版本（其它已确认版本保留）':'已驳回');
+  }catch(e){toast('操作失败：'+(e.message||'网络错误'));}
 }
 function renderAudit(){
   $('audit-table').innerHTML=`<thead><tr><th>对象</th><th>操作</th><th>原值 → 新值</th><th>操作人 · 时间</th></tr></thead><tbody>
@@ -4198,14 +4322,34 @@ let settingsTab='account';
 const permCell=on=>`<td><input type="checkbox" ${on?'checked':''} disabled aria-label="${on?'允许':'不允许'}"></td>`;
 
 const TRASH_LABEL={product:'商品',project:'项目',template:'模板',asset:'素材'};
-function renderTrash(){
+let trashServerProjects=[];
+function trashServerRows(){
+  if(!trashServerProjects.length)return '';
+  return `<div class="small muted" style="margin:4px 0 6px">已交付 / 已删除项目</div>`+trashServerProjects.map(p=>`
+    <div class="trash-row">
+      <div style="min-width:0"><b>${esc(p.name||'未命名项目')}</b> <span class="pill ${p.status==='delivered'?'gray':'red'}">${p.status==='delivered'?'已交付':'已删除'}</span>
+        <span class="small muted" style="display:block">${esc((p.delivered_at||p.deleted_at||p.updated_at||'').slice(0,16).replace('T',' '))}</span></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="restoreCanvasProject('${p.id}')">恢复</button>
+    </div>`).join('');
+}
+async function renderTrash(){
   const el=$('trash-list');if(!el)return;
   const count=$('trash-count');if(count)count.textContent=protoTrash.length+' 项';
-  el.innerHTML=protoTrash.length?protoTrash.map((t,i)=>`<div class="trash-row">
+  const localHtml=protoTrash.length?protoTrash.map((t,i)=>`<div class="trash-row">
     <div style="min-width:0"><b>${esc(t.name||'未命名')}</b> <span class="pill gray">${TRASH_LABEL[t.type]||t.type}</span>
       <span class="small muted" style="display:block">删除于 ${esc(t.deletedAt||'—')}</span></div>
     <button type="button" class="btn btn-ghost btn-sm" onclick="trashRestore(${i})">恢复</button>
-  </div>`).join(''):'<p class="small muted">回收站是空的。</p>';
+  </div>`).join(''):'';
+  el.innerHTML=(localHtml||'')+trashServerRows()||'<p class="small muted">回收站是空的。</p>';
+  try{
+    const [del,deld]=await Promise.all([
+      pjApi('/api/canvas-projects?status=delivered'),
+      pjApi('/api/canvas-projects?status=deleted'),
+    ]);
+    trashServerProjects=[...(del.data||[]),...(deld.data||[])];
+    if(count)count.textContent=(protoTrash.length+trashServerProjects.length)+' 项';
+    el.innerHTML=(localHtml||'')+trashServerRows()||'<p class="small muted">回收站是空的。</p>';
+  }catch(e){}
 }
 async function trashRestore(i){
   const t=protoTrash[i];if(!t)return;
@@ -4860,6 +5004,9 @@ document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed
 studioChannelId=(activeChannel()||{}).id||null;
 renderFlow();resetCanvas();renderNewProductFields();refreshAll();
 loadProductsFromApi();
+loadTemplates();
+loadVersions();
+loadCanvasProjects();
 refreshSidebarModels();
 pmBindDrop();
 const __hash=(location.hash||'').replace('#','');

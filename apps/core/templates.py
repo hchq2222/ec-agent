@@ -158,4 +158,5 @@ def normalize_template(raw: Any, existing: dict[str, Any] | None = None) -> dict
         "background": str(pick("background", "white"))[:32] or "white",
         "text_slots": [_slot(item, i) for i, item in enumerate(slots)],
         "logo_slot": _logo(pick("logo_slot", {})),
+        "ref_image": str(pick("ref_image", ""))[:2_000_000],
     }
