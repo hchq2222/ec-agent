@@ -1169,6 +1169,12 @@ try{
   saved.forEach(p=>{if(p&&p.id&&!products.some(x=>x.id===p.id))products.push(p);});
 }catch(e){}
 const pById=id=>products.find(p=>p.id===id);
+function skuDisplay(s){
+  if(!s)return '';
+  const c=String(s.color||'').trim(),p=String(s.spec||'').trim();
+  if(c&&c!=='默认'&&p)return c+' '+p;
+  return p||c||'默认';
+}
 /* ============ 版式模板 ============ */
 const BUILTIN_LAYOUTS=[
   {key:'white-main-800',name:'白底主图 800',category:'all',size_w:800,size_h:800,subject_ratio:0.85,shadow:'soft',background:'white',text_slots:[],logo_slot:{}},
@@ -1456,7 +1462,7 @@ function pjAddVersion(pr,skuId,result){
   const p=pById(pr.productId),s=p?.skus.find(x=>x.id===skuId);if(!p||!s)return;
   versions.push({v:versions.length+1,price:0,title:p.short||p.name,bg:'white',status:'待确认',
     img:result?.url||'',model:result?.model||'',
-    note:`项目 ${pr.name} · ${s.color} ${s.spec}`,who:OPERATOR,at:now()});
+    note:`项目 ${pr.name} · ${skuDisplay(s)}`,who:OPERATOR,at:now()});
   if(typeof renderVersions==='function')renderVersions();
   if(typeof renderAudit==='function')renderAudit();
 }
@@ -1716,7 +1722,7 @@ function renderProjects(){
         <span class="pill ${PJ_ST[st][0]}">${PJ_ST[st][1]}</span>
       </button>`;
   }).join('');
-  const skuOpts=p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===projectSkuId?'selected':''}>${esc(s.color)} ${esc(s.spec)}</option>`).join('');
+  const skuOpts=p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===projectSkuId?'selected':''}>${esc(skuDisplay(s))}</option>`).join('');
   const st=pjProjectStatus(pr);
   const selNode=pr.nodes.find(n=>n.id===projectNodeId);
   const genNode=pr.nodes.find(n=>n.type==='generate'||n.type==='refine');
@@ -1742,7 +1748,7 @@ function renderProjects(){
       </select><button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
       <div class="card-b"><div class="pj-canvas">${nodeCards}</div>
       <p class="small muted" style="margin-top:10px">生成是人工动作：先写提示词，再点「生成图片」；生成后停在人工确认，确认后自动走到交付。改动画布会重置运行状态。</p></div></div>
-    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done'||run.result)?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(sku?sku.color+' '+sku.spec:'')}</h3>${run.result?.url?'<span class="pill green">真实生成</span>':'<span class="pill gray">原型示意</span>'}</div>
+    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done'||run.result)?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(skuDisplay(sku))}</h3>${run.result?.url?'<span class="pill green">真实生成</span>':'<span class="pill gray">原型示意</span>'}</div>
       <div class="card-b"><div class="two-col" style="align-items:start">
         <div class="project-preview" style="height:auto;min-height:220px;margin:0;padding:8px">
           ${run.result?.url?`<img src="${esc(run.result.url)}" alt="生成结果">`:`${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span>`}
@@ -1770,7 +1776,7 @@ function pStatus(p){
   return{key:'delivery',text:`仅缺交付 ${miss.length}`,cls:'brand'};
 }
 const canGenerate=p=>Object.entries(p.fields).every(([k,f])=>f.src==='human'||fieldScope(p,k)!=='generate');
-function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid);if(s)return{p,s,label:`${p.short} · ${s.color} ${s.spec}`};}return null;}
+function skuInfo(sid){for(const p of products){const s=p.skus.find(x=>x.id===sid);if(s)return{p,s,label:`${p.short} · ${skuDisplay(s)}`};}return null;}
 
 /* 交付项：自由选择「用途 + 数量」；不预设 8 位。单价仅用于原型估算 */
 const DELIVERABLES=[
@@ -2031,17 +2037,15 @@ function renderProductList(){
     return;
   }
   $('product-table').innerHTML=`<table class="product-table">
-    <thead><tr><th style="width:34%">商品</th><th>品类</th><th>SKU</th><th>价格</th><th>档案</th><th>素材</th><th>更新</th><th></th></tr></thead>
+    <thead><tr><th style="width:34%">商品</th><th>品类</th><th>SKU</th><th>档案</th><th>素材</th><th>更新</th><th></th></tr></thead>
     <tbody>${list.map(p=>{
-      const st=pStatus(p),n=assetCount(p.id),prices=p.skus.map(s=>s.price);
-      const range=prices.length?(Math.min(...prices)===Math.max(...prices)?`¥${prices[0]}`:`¥${Math.min(...prices)}–${Math.max(...prices)}`):'—';
+      const st=pStatus(p),n=assetCount(p.id);
       const src=p.source==='link'?'<span class="pill gray">链接导入</span>':p.source==='ai_intake'?'<span class="pill brand">AI 识别</span>':'<span class="pill gray">手工新建</span>';
       return `<tr onclick="openProduct('${p.id}')">
         <td><div class="product-cell"><span class="thumb" style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex:none">${productSVG(CATS[p.cat].subject)}</span>
           <span style="min-width:0"><span class="n">${esc(p.name)}</span><span class="s">${esc(p.short||'')} ${src}</span></span></div></td>
         <td>${CATS[p.cat].name}</td>
         <td>${p.skus.length}</td>
-        <td class="mono">${range}</td>
         <td><span class="pill ${st.cls}">${st.text}</span></td>
         <td>${n?`${n} 份`:'—'}${p.affected?` <span class="pill red">${p.affected} 受影响</span>`:''}</td>
         <td class="small muted">${esc(p.updatedAt||'—')}</td>
@@ -2166,25 +2170,14 @@ function renderPdAttrs(p){
 }
 function renderPdSku(p){
   $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>SKU 列表</h3>
-      <div class="flex"><button type="button" class="btn btn-ghost btn-sm" onclick="openModal('price-batch-modal')">批量改价</button>
-      <button type="button" class="btn btn-soft btn-sm" onclick="addSku()">＋ 新增 SKU</button></div></div>
+      <button type="button" class="btn btn-soft btn-sm" onclick="addSku()">＋ 新增 SKU</button></div>
     <div class="card-b">
-      ${p.skus.length?`<table class="table sku-table"><thead><tr><th>颜色</th><th>规格</th><th style="width:130px">售价（元）</th><th></th></tr></thead>
+      ${p.skus.length?`<table class="table sku-table"><thead><tr><th>SKU 名称（自定义）</th><th style="width:70px"></th></tr></thead>
       <tbody>${p.skus.map(s=>`<tr>
-        <td><input class="input" value="${esc(s.color)}" onchange="setSku('${s.id}','color',this.value)"></td>
-        <td><input class="input" value="${esc(s.spec)}" onchange="setSku('${s.id}','spec',this.value)"></td>
-        <td><input class="input" inputmode="decimal" value="${s.price}" onchange="setSku('${s.id}','price',this.value)"></td>
+        <td><input class="input" value="${esc(skuDisplay(s))}" placeholder="如 150ml / 旅行装" onchange="setSkuName('${s.id}',this.value)"></td>
         <td><button type="button" class="btn btn-ghost btn-sm" onclick="delSku('${s.id}')">删除</button></td>
       </tr>`).join('')}</tbody></table>`:'<div class="notice">还没有 SKU。单规格商品也建议建一个「默认 SKU」，避免出现无 SKU 分支。</div>'}
-      <hr class="hr">
-      <div class="field"><label>矩阵生成</label>
-        <div class="row cols-3">
-          <input class="input" id="mx-colors" placeholder="颜色，逗号分隔：青绿,米白">
-          <input class="input" id="mx-specs" placeholder="规格，逗号分隔：150ml,50ml">
-          <button type="button" class="btn btn-soft" onclick="genMatrix()">生成组合</button>
-        </div>
-        <p class="small muted" style="margin-top:6px">已存在的组合会跳过；价格取第一个 SKU 或 0，可再批量改价。</p>
-      </div>
+      <p class="small muted" style="margin-top:6px">SKU 名称自己定；颜色、规格、售价不再单独维护。</p>
     </div></div>`;
 }
 function renderPdImages(p){
@@ -2266,9 +2259,16 @@ function setSku(id,key,value){
   audit.push({obj:p.short||p.name,op:'修改 SKU · '+s.color+' '+s.spec+' · '+key,from:String(old),to:String(s[key]),who:OPERATOR,at:now()});
   p.updatedAt=now();saveProducts();renderProductList();
 }
+function setSkuName(id,value){
+  const p=pById(curPid),s=p&&p.skus.find(x=>x.id===id);if(!s)return;
+  const name=String(value||'').trim()||'默认';
+  s.color='默认';s.spec=name;
+  audit.push({obj:p.short||p.name,op:'修改 SKU 名称',from:'—',to:name,who:OPERATOR,at:now()});
+  p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
+}
 function addSku(){
   const p=pById(curPid);
-  p.skus.push({id:'s_'+Date.now(),color:'新颜色',spec:'新规格',price:p.skus[0]?p.skus[0].price:0});
+  p.skus.push({id:'s_'+Date.now(),color:'默认',spec:'新 SKU',price:null});
   p.updatedAt=now();saveProducts();renderProductDetail();renderProductList();
 }
 function delSku(id){
@@ -2531,17 +2531,16 @@ function piRenderDraft(d){
       <div class="field"><label for="pi-pitch">卖点</label><textarea class="textarea" id="pi-pitch" rows="2">${esc(d.pitch||'')}</textarea></div>
       <div class="field"><label>商品参数 <span class="small muted" style="font-weight:400">AI 整理，可改；拖动列线可调列宽</span></label>
         <table class="table attr-table" id="pi-attr-table">
-          <colgroup><col style="width:34%"><col><col style="width:90px"><col style="width:44px"></colgroup>
+          <colgroup><col style="width:34%"><col><col style="width:44px"></colgroup>
           <thead><tr>
             <th>参数<span class="col-grip" data-col="0" title="拖动调整列宽"></span></th>
-            <th>值<span class="col-grip" data-col="1" title="拖动调整列宽"></span></th>
-            <th>单位<span class="col-grip" data-col="2" title="拖动调整列宽"></span></th>
+            <th>值（含单位）<span class="col-grip" data-col="1" title="拖动调整列宽"></span></th>
             <th></th>
           </tr></thead><tbody id="pi-attrs"></tbody></table>
         <button type="button" class="btn btn-ghost btn-sm" onclick="piAddAttr()">＋ 添加参数</button>
       </div>
-      <div class="field"><label>SKU</label>
-        <table class="table"><thead><tr><th>颜色</th><th>规格</th><th style="width:110px">售价（元）</th><th style="width:40px"></th></tr></thead><tbody id="pi-skus"></tbody></table>
+      <div class="field"><label>SKU <span class="small muted" style="font-weight:400">自己命名，如 150ml / 旅行装 / 双支装</span></label>
+        <table class="table"><thead><tr><th>SKU 名称</th><th style="width:40px"></th></tr></thead><tbody id="pi-skus"></tbody></table>
         <button type="button" class="btn btn-ghost btn-sm" onclick="piAddSku()">＋ 添加 SKU</button>
       </div>
       ${(d.missing||[]).length?`<div class="notice amber">资料里还缺：${d.missing.map(esc).join('、')}。可以继续补充，或先入库稍后完善。</div>`:''}
@@ -2561,7 +2560,7 @@ function piSetAttrColWidths(pcts){
 function piApplyAttrColWidths(){
   let saved=null;
   try{saved=JSON.parse(localStorage.getItem(PI_ATTR_COLS_KEY)||'null');}catch(e){saved=null;}
-  if(!Array.isArray(saved)||saved.length!==4)return;
+  if(!Array.isArray(saved)||saved.length!==3)return;
   const sum=saved.reduce((a,b)=>a+(Number(b)>0?Number(b):0),0);
   if(sum<99||sum>101)return;
   piSetAttrColWidths(saved.map(Number));
@@ -2573,12 +2572,12 @@ function piBindAttrResize(){
       ev.preventDefault();
       const i=Number(grip.dataset.col),cols=piAttrCols();
       const ths=[...table.querySelectorAll('thead th')];
-      if(cols.length!==4||ths.length!==4)return;
+      if(cols.length!==3||ths.length!==3)return;
       const widths=ths.map(th=>th.getBoundingClientRect().width);
       const sum=widths.reduce((a,b)=>a+b,0);
       if(!sum)return;
-      // 单位列是最窄的可编辑列，至少留 56px；操作列至少 40px
-      const minA=i===2?56:64, minB=i===2?40:80;
+      // 参数列至少 64px、值列至少 80px、删除列至少 40px
+      const minA=i===0?64:80, minB=i===1?40:80;
       const startX=ev.clientX,startA=widths[i],startB=widths[i+1];
       let moved=false;
       const move=e=>{
@@ -2603,20 +2602,21 @@ function piBindAttrResize(){
     });
   });
 }
+function piAttrValue(a){
+  const v=String(a.value||''),u=String(a.unit||'');
+  return u&&!v.endsWith(u)?v+u:v;
+}
 function piRenderAttrRows(){
   const rows=(piDraftData&&piDraftData.attrs)||[];
   $('pi-attrs').innerHTML=rows.map((a,i)=>`<tr>
     <td><input class="input pi-attr-key" value="${esc(a.key||'')}" placeholder="如 容量"></td>
-    <td><input class="input pi-attr-val" value="${esc(a.value||'')}" placeholder="如 150"></td>
-    <td><input class="input pi-attr-unit" value="${esc(a.unit||'')}" placeholder="ml"></td>
+    <td><input class="input pi-attr-val" value="${esc(piAttrValue(a))}" placeholder="如 150ml"></td>
     <td><button type="button" class="btn btn-ghost btn-sm" onclick="piRemoveAttr(${i})" aria-label="删除">×</button></td></tr>`).join('');
 }
 function piRenderSkuRows(){
   const rows=(piDraftData&&piDraftData.skus)||[];
   $('pi-skus').innerHTML=rows.map((s,i)=>`<tr>
-    <td><input class="input pi-sku-color" value="${esc(s.color||'')}" placeholder="青绿色"></td>
-    <td><input class="input pi-sku-spec" value="${esc(s.spec||'')}" placeholder="150ml"></td>
-    <td><input class="input pi-sku-price" value="${s.price??''}" placeholder="129" inputmode="decimal"></td>
+    <td><input class="input pi-sku-name" value="${esc(skuDisplay(s))}" placeholder="如 150ml / 旅行装"></td>
     <td><button type="button" class="btn btn-ghost btn-sm" onclick="piRemoveSku(${i})" aria-label="删除">×</button></td></tr>`).join('');
 }
 /* 品类可输入：支持 key / 全名 / 包含匹配，返回 null 表示无法识别 */
@@ -2641,17 +2641,15 @@ function piSyncDraft(){
   piDraftData.attrs=[...document.querySelectorAll('#pi-attrs tr')].map(tr=>({
     key:tr.querySelector('.pi-attr-key').value.trim(),
     value:tr.querySelector('.pi-attr-val').value.trim(),
-    unit:tr.querySelector('.pi-attr-unit').value.trim(),
+    unit:'', // 单位与值合并，后端 unit 留空
   })).filter(a=>a.key||a.value);
   piDraftData.skus=[...document.querySelectorAll('#pi-skus tr')].map(tr=>({
-    color:tr.querySelector('.pi-sku-color').value.trim()||'默认',
-    spec:tr.querySelector('.pi-sku-spec').value.trim()||'默认',
-    price:Number.parseFloat(tr.querySelector('.pi-sku-price').value)||null,
+    color:'默认',spec:tr.querySelector('.pi-sku-name').value.trim()||'默认',price:null,
   }));
 }
 function piAddAttr(){piSyncDraft();piDraftData.attrs=piDraftData.attrs||[];piDraftData.attrs.push({key:'',value:'',unit:''});piRenderAttrRows();}
 function piRemoveAttr(i){piSyncDraft();piDraftData.attrs.splice(i,1);piRenderAttrRows();}
-function piAddSku(){piSyncDraft();piDraftData.skus=piDraftData.skus||[];piDraftData.skus.push({color:'',spec:'',price:null});piRenderSkuRows();}
+function piAddSku(){piSyncDraft();piDraftData.skus=piDraftData.skus||[];piDraftData.skus.push({color:'默认',spec:'',price:null});piRenderSkuRows();}
 function piRemoveSku(i){piSyncDraft();piDraftData.skus.splice(i,1);piRenderSkuRows();}
 async function piSave(confirmed){
   if(!piProductId)return;
