@@ -397,7 +397,8 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   .scene-grid{grid-template-columns:repeat(2,1fr)}
 }
 .project-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start}
-.project-stack{display:grid;gap:16px}
+.project-stack{display:grid;gap:16px;min-width:0}
+.project-stack>.card{min-width:0}
 .project-list-btn{width:100%;display:block;text-align:left;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;color:var(--text)}
 .project-list-btn.active{border-color:var(--brand);background:var(--brand-soft)}
 .project-list-btn small{display:block;color:var(--muted);margin-top:4px}
@@ -415,6 +416,17 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
 .project-preview>img{width:100%;height:100%;object-fit:contain}
 /* 项目画布（原型） */
 .pj-canvas{display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding:6px 2px 10px}
+.pj-flow{position:relative;height:430px;border:1px solid var(--line-2);border-radius:10px;background:#fbfbfd;overflow:hidden;cursor:grab;touch-action:none}
+.pj-flow.panning{cursor:grabbing}
+.pj-flow-inner{position:absolute;left:0;top:0;width:2600px;height:1800px;transform-origin:0 0}
+.pj-edge-svg{position:absolute;left:0;top:0;width:2600px;height:1800px;pointer-events:none;overflow:visible}
+.pj-fnode{position:absolute;width:180px;flex:none;min-height:110px;cursor:grab;user-select:none;background:#fff}
+.pj-fnode.dragging{cursor:grabbing;z-index:5;box-shadow:0 10px 24px rgba(16,24,40,.16)}
+.pj-flow-tools{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px;z-index:6}
+.pj-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.pj-result{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.pj-result img{width:100%;height:170px;object-fit:contain;background:#fafbfc;display:block}
+.pj-result .m{padding:6px 8px}
 .pj-node{flex:0 0 170px;min-height:118px;border:1px solid var(--line);border-radius:10px;background:#fff;text-align:left;padding:10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;transition:.15s}
 .pj-node:hover{border-color:#c7c9f2}
 .pj-node.active{border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,70,229,.10)}
@@ -1348,7 +1360,7 @@ function saveTplForm(){
 const projectPrototypes=(()=>{try{return JSON.parse(localStorage.getItem('proto.projects2')||'[]').filter(x=>x&&x.id&&x.productId&&Array.isArray(x.nodes));}catch(e){return [];}})();
 let projectId=projectPrototypes[0]?.id||'',projectNodeId='n_gen',projectSkuId='';
 const PJ_TYPE={source:'商品原图',generate:'生成',refine:'精修',process:'处理',quality_check:'质检',human_review:'人工确认',deliver:'交付'};
-const PJ_ST={pending:['gray','待运行'],running:['blue','运行中'],waiting:['amber','待确认'],done:['green','完成'],failed:['red','失败']};
+const PJ_ST={pending:['gray','待运行'],running:['blue','运行中'],waiting:['amber','待确认'],done:['green','完成'],ready:['green','已就绪'],failed:['red','失败']};
 const PJ_MODELS=['img-gen-v1','img-gen-v2'];
 const PJ_PROCESS={crop:'裁剪',compose:'拼接',watermark:'加水印',replace_text:'换文字'};
 let pjChannels=[],pjModels=[],pjChannelId='',pjModelsLoaded=false,pjModelsPromise=null,pjBusy=false;
@@ -1455,7 +1467,7 @@ function pjSourceRemove(){
   delete pr.sources[projectSkuId];
   projectSave();renderProjects();toast('已移除该 SKU 的原图');
 }
-async function pjGenerate(pr,node,skuId){
+async function pjGenerate(pr,node,skuId,refOverride){
   const p=pById(pr.productId);
   const channelId=node.config.channelId||pjChannelId;
   const model=node.config.model||pjModels[0]?.key;
@@ -1463,7 +1475,7 @@ async function pjGenerate(pr,node,skuId){
   if(!model)throw new Error('没有可用生图模型');
   const body={channel_id:channelId,model,prompt:node.config.prompt,n:1,
     quality:node.config.quality||'auto',size:node.config.size||'1024x1024',output_format:'png'};
-  const ref=await pjReferenceImage(p,pr,skuId);
+  const ref=refOverride||await pjReferenceImage(p,pr,skuId);
   if(ref)body.images=[ref];
   return pjApi('/api/images/generate',{method:'POST',body:JSON.stringify(body)});
 }
@@ -1476,25 +1488,140 @@ projectPrototypes.forEach(pr=>{
   });
 });
 projectSave();
+function pjEdges(pr){
+  if(!Array.isArray(pr.edges)){
+    pr.edges=[];
+    for(let i=0;i<pr.nodes.length-1;i++)pr.edges.push({from:pr.nodes[i].id,to:pr.nodes[i+1].id});
+  }
+  return pr.edges;
+}
+function pjDepths(pr){
+  const parents={};
+  pjEdges(pr).forEach(e=>{(parents[e.to]=parents[e.to]||[]).push(e.from);});
+  const memo={},visiting=new Set();
+  const depth=id=>{
+    if(memo[id]!=null)return memo[id];
+    if(visiting.has(id))return 0;
+    visiting.add(id);
+    const ps=parents[id]||[];
+    memo[id]=ps.length?Math.max(...ps.map(depth))+1:0;
+    visiting.delete(id);
+    return memo[id];
+  };
+  pr.nodes.forEach(n=>depth(n.id));
+  return memo;
+}
 function pjDefaultNodes(){return [
-  {id:'n_source',type:'source',label:'商品原图',config:{}},
-  {id:'n_gen',type:'generate',label:'生成图片',config:{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null}},
-  {id:'n_review',type:'human_review',label:'人工确认',config:{}},
-  {id:'n_deliver',type:'deliver',label:'交付',config:{}},
+  {id:'n_source',type:'source',label:'商品原图',config:{},position:{x:40,y:80}},
+  {id:'n_gen',type:'generate',label:'生成图片',config:{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null},position:{x:280,y:80}},
+  {id:'n_review',type:'human_review',label:'人工确认',config:{},position:{x:520,y:80}},
+  {id:'n_deliver',type:'deliver',label:'交付',config:{},position:{x:760,y:80}},
 ];}
+function pjEnsurePositions(pr){
+  const depths=pjDepths(pr);
+  const counters={};
+  pr.nodes.forEach(n=>{
+    if(n.position&&Number.isFinite(n.position.x)&&Number.isFinite(n.position.y))return;
+    const d=depths[n.id]||0;
+    counters[d]=counters[d]||0;
+    n.position={x:40+d*240,y:60+counters[d]*150};
+    counters[d]++;
+  });
+}
+let pjView={x:30,y:20,k:1},pjFitFor=null;
+function pjApplyView(){
+  const inner=$('pj-flow-inner');if(!inner)return;
+  inner.style.transform=`translate(${pjView.x}px,${pjView.y}px) scale(${pjView.k})`;
+}
+function pjDrawEdges(){
+  const svg=$('pj-edge-svg'),inner=$('pj-flow-inner');if(!svg||!inner)return;
+  const pr=projectCurrent();if(!pr)return;
+  const paths=pjEdges(pr).map(e=>{
+    const s=inner.querySelector(`.pj-fnode[data-id="${e.from}"]`);
+    const t=inner.querySelector(`.pj-fnode[data-id="${e.to}"]`);
+    if(!s||!t)return '';
+    const sx=s.offsetLeft+s.offsetWidth,sy=s.offsetTop+s.offsetHeight/2;
+    const tx=t.offsetLeft,ty=t.offsetTop+t.offsetHeight/2;
+    const dx=Math.max(40,Math.abs(tx-sx)/2);
+    return `<path d="M${sx},${sy} C${sx+dx},${sy} ${tx-dx},${ty} ${tx},${ty}" fill="none" stroke="#9aa0ae" stroke-width="1.5" marker-end="url(#pj-arrowhead)"></path>`;
+  }).join('');
+  svg.innerHTML=`<defs><marker id="pj-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa0ae"></path></marker></defs>${paths}`;
+}
+function pjBindFlow(){
+  const flow=$('pj-flow'),inner=$('pj-flow-inner');if(!flow||!inner)return;
+  pjApplyView();pjDrawEdges();
+  const pr=projectCurrent();
+  if(pr&&pjFitFor!==pr.id){pjFit();pjFitFor=pr.id;}
+  flow.querySelectorAll('.pj-fnode').forEach(el=>{
+    el.addEventListener('pointerdown',ev=>{
+      if(ev.button!==0)return;
+      ev.stopPropagation();
+      const pr=projectCurrent();const node=pr?.nodes.find(n=>n.id===el.dataset.id);if(!node)return;
+      const start={x:ev.clientX,y:ev.clientY,nx:node.position.x,ny:node.position.y};
+      let moved=false;
+      el.setPointerCapture(ev.pointerId);
+      const move=e=>{
+        const dx=(e.clientX-start.x)/pjView.k,dy=(e.clientY-start.y)/pjView.k;
+        if(Math.abs(dx)+Math.abs(dy)>3)moved=true;
+        node.position={x:Math.round(start.nx+dx),y:Math.round(start.ny+dy)};
+        el.style.left=node.position.x+'px';el.style.top=node.position.y+'px';
+        pjDrawEdges();
+      };
+      const up=()=>{
+        el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);
+        el.classList.remove('dragging');
+        if(moved)projectSave();else projectSelectNode(node.id);
+      };
+      el.classList.add('dragging');
+      el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);
+    });
+  });
+  flow.addEventListener('pointerdown',ev=>{
+    if(ev.target.closest('.pj-fnode')||ev.target.closest('.pj-flow-tools'))return;
+    const start={x:ev.clientX,y:ev.clientY,vx:pjView.x,vy:pjView.y};
+    flow.classList.add('panning');
+    const move=e=>{pjView.x=start.vx+(e.clientX-start.x);pjView.y=start.vy+(e.clientY-start.y);pjApplyView();};
+    const up=()=>{flow.classList.remove('panning');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
+  });
+  flow.addEventListener('wheel',ev=>{
+    ev.preventDefault();
+    const rect=flow.getBoundingClientRect();
+    const mx=ev.clientX-rect.left,my=ev.clientY-rect.top;
+    const k=Math.min(1.8,Math.max(0.4,pjView.k*(ev.deltaY<0?1.1:0.9)));
+    pjView.x=mx-(mx-pjView.x)*(k/pjView.k);
+    pjView.y=my-(my-pjView.y)*(k/pjView.k);
+    pjView.k=k;pjApplyView();
+  },{passive:false});
+}
+function pjZoom(f){pjView.k=Math.min(1.8,Math.max(0.4,pjView.k*f));pjApplyView();}
+function pjFit(exact){
+  const flow=$('pj-flow'),pr=projectCurrent();if(!flow||!pr)return;
+  const w=flow.clientWidth,h=flow.clientHeight;
+  const xs=pr.nodes.map(n=>n.position?.x||0),ys=pr.nodes.map(n=>n.position?.y||0);
+  const minX=Math.min(...xs),minY=Math.min(...ys);
+  const spanX=Math.max(...xs)+200-minX,spanY=Math.max(...ys)+160-minY;
+  const fitK=Math.min(1,(w-40)/Math.max(1,spanX),(h-40)/Math.max(1,spanY));
+  const k=exact?Math.max(0.35,fitK):Math.max(0.7,fitK);
+  pjView={k,x:(w-spanX*k)/2-minX*k,y:(h-spanY*k)/2-minY*k};
+  pjApplyView();
+}
 function projectCreateFromSelector(){
   const product=pById($('project-product-select')?.value);
   if(!product){toast('请先选择商品');return;}
   const count=projectPrototypes.filter(x=>x.productId===product.id).length+1;
-  const item={id:'proj_'+Date.now(),productId:product.id,name:product.name+(count>1?` · 项目 ${count}`:''),nodes:pjDefaultNodes(),runs:{},sources:{},createdAt:now()};
+  const nodes=pjDefaultNodes();
+  const item={id:'proj_'+Date.now(),productId:product.id,name:product.name+(count>1?` · 项目 ${count}`:''),
+    nodes,edges:nodes.slice(0,-1).map((n,i)=>({from:n.id,to:nodes[i+1].id})),runs:{},sources:{},createdAt:now()};
   projectPrototypes.unshift(item);
   projectId=item.id;projectNodeId='n_gen';projectSkuId=product.skus[0]?.id||'';
+  pjView={x:30,y:20,k:1};pjFitFor=null;
   projectSave();renderProjects();toast('项目已创建，画布已铺好默认流程');
 }
 function projectOpen(id){
   projectId=id;const pr=projectCurrent();const p=pr&&pById(pr.productId);
   projectNodeId=pr?.nodes.find(n=>n.type==='generate')?.id||pr?.nodes[0]?.id||'';
-  projectSkuId=p?.skus[0]?.id||'';renderProjects();
+  projectSkuId=p?.skus[0]?.id||'';pjView={x:30,y:20,k:1};pjFitFor=null;renderProjects();
 }
 function openProjectFromProduct(pid){
   const p=pById(pid);if(!p)return;
@@ -1511,31 +1638,22 @@ async function projectDeleteCurrent(){
   projectId=projectPrototypes[0]?.id||'';projectSave();renderProjects();toast('项目已移入回收站');
 }
 function pjProjectStatus(pr){
-  const states=Object.values(pr.runs||{});
-  if(states.some(r=>r.status==='waiting'))return ['amber','待确认'];
-  if(states.some(r=>r.status==='failed'))return ['red','有失败'];
-  if(states.length&&states.every(r=>r.status==='done'))return ['green','已完成'];
+  const runs=Object.values(pr.runs||{});
+  if(runs.some(r=>r.status==='running'))return ['blue','运行中'];
+  if(runs.some(r=>r.status==='failed'))return ['red','有失败'];
+  const genNodes=pr.nodes.filter(n=>['generate','refine'].includes(n.type));
+  if(runs.length&&genNodes.length&&runs.every(r=>genNodes.every(n=>r.states?.[n.id]==='done')))return ['green','已完成'];
+  if(runs.some(r=>Object.values(r.states||{}).includes('done')))return ['amber','进行中'];
   return ['gray','待运行'];
 }
 function pjRun(pr,sku){return (pr.runs||{})[sku]||null;}
-function pjAddVersion(pr,skuId,result){
+function pjAddVersion(pr,skuId,result,nodeLabel){
   const p=pById(pr.productId),s=p?.skus.find(x=>x.id===skuId);if(!p||!s)return;
   versions.push({v:versions.length+1,price:0,title:p.short||p.name,bg:'white',status:'待确认',
     img:result?.url||'',model:result?.model||'',
-    note:`项目 ${pr.name} · ${skuDisplay(s)}`,who:OPERATOR,at:now()});
+    note:`项目 ${pr.name} · ${skuDisplay(s)}${nodeLabel?' · '+nodeLabel:''}`,who:OPERATOR,at:now()});
   if(typeof renderVersions==='function')renderVersions();
   if(typeof renderAudit==='function')renderAudit();
-}
-/* 生成之后的非生成节点自动推进；遇到下一个生成节点或人工确认就停下 */
-function pjAdvanceAuto(pr,run){
-  while(run.progress<pr.nodes.length){
-    const n=pr.nodes[run.progress];
-    if(n.type==='generate'||n.type==='refine'){run.status='pending';break;}
-    if(n.type==='human_review'){run.states[n.id]='waiting';run.status='waiting';break;}
-    run.states[n.id]='done';run.progress++;
-    if(n.type==='deliver'){run.status='done';break;}
-  }
-  if(run.progress>=pr.nodes.length)run.status='done';
 }
 /* 根据商品事实 + 当前模板拼一段提示词（原型不调用文本模型） */
 function pjComposePrompt(pr,node,sku){
@@ -1589,54 +1707,49 @@ async function pjGenerateNode(){
   const pr=projectCurrent(),p=pr&&pById(pr.productId);if(!pr||!p)return;
   const sku=projectSkuId||p.skus[0]?.id||'';
   if(!sku){toast('该商品还没有 SKU');return;}
-  const run=pr.runs[sku]=pr.runs[sku]||{progress:0,status:'pending',states:{}};
-  // 选中了生成节点就用它；否则取第一个还没跑的生成节点
-  let idx=pr.nodes.findIndex(n=>n.id===projectNodeId&&(n.type==='generate'||n.type==='refine'));
-  if(idx<0)idx=pr.nodes.findIndex((n,i)=>i>=run.progress&&(n.type==='generate'||n.type==='refine'));
-  if(idx<0){toast('画布里没有待生成的节点');return;}
-  const n=pr.nodes[idx];
-  if(!(n.config.prompt||'').trim()){
-    projectNodeId=n.id;renderProjects();
+  const run=pr.runs[sku]=pr.runs[sku]||{states:{},outputs:{}};
+  run.outputs=run.outputs||{};
+  // 选中了生成节点就用它；否则取第一个还没生成的生成节点
+  let node=pr.nodes.find(n=>n.id===projectNodeId&&['generate','refine'].includes(n.type));
+  if(!node)node=pr.nodes.find(n=>['generate','refine'].includes(n.type)&&run.states?.[n.id]!=='done');
+  if(!node){toast('画布里没有待生成的节点');return;}
+  if(!(node.config.prompt||'').trim()){
+    projectNodeId=node.id;renderProjects();
     toast('先在右侧写提示词，再点「生成图片」');
     return;
   }
   if(!pjChannelId||!pjModels.length)await pjEnsureModels();
-  // 重新生成：清掉该节点及其之后的运行状态，但不影响其它节点参数
-  if(idx<run.progress||run.status==='done'||run.status==='failed'){
-    run.progress=idx;
-    Object.keys(run.states||{}).forEach(k=>{
-      const ni=pr.nodes.findIndex(x=>x.id===k);
-      if(ni>=idx)delete run.states[k];
-    });
-    run.result=null;run.error=null;
-  }
-  run.status='running';run.current=n.id;run.states[n.id]='running';
+  // 并行分支：优先用父节点的输出作为参考图（父节点没出图就用商品原图）
+  const parents=pjEdges(pr).filter(e=>e.to===node.id).map(e=>e.from);
+  let ref=null;
+  for(const pid of parents){const out=run.outputs[pid];if(out?.url){ref=out.url;break;}}
+  run.status='running';run.current=node.id;run.states[node.id]='running';
   projectSave();renderProjects();
   pjBusy=true;
   try{
-    const res=await pjGenerate(pr,n,sku);
+    const res=await pjGenerate(pr,node,sku,ref);
     const img=(res.images||[])[0]||{};
     if(!img.url)throw new Error('渠道没有返回图片');
-    run.result={url:img.url,model:res.model||n.config.model,latency:res.latency_ms||0,
-      nodeId:n.id,at:now(),jobId:res.id};
-    run.states[n.id]='done';run.progress=Math.max(run.progress,idx+1);
-    pjAdvanceAuto(pr,run);
+    run.outputs[node.id]={url:img.url,model:res.model||node.config.model,latency:res.latency_ms||0,
+      nodeId:node.id,label:node.label,at:now(),jobId:res.id};
+    run.states[node.id]='done';
+    const pending=pr.nodes.some(n=>['generate','refine'].includes(n.type)&&run.states?.[n.id]!=='done');
+    run.status=pending?'pending':'done';
+    pjAddVersion(pr,sku,run.outputs[node.id],node.label);
     projectSave();renderProjects();
-    if(run.status==='done'){pjAddVersion(pr,sku,run.result);toast('流程完成，结果已写入素材库');}
-    else if(run.status==='waiting')toast('图片已生成，人工确认后再交付');
-    else toast('图片已生成');
+    toast(`「${node.label}」已生成，结果已写入素材库`);
   }catch(e){
-    // 网关 502/超时但后台其实已经出图：找回最近一条带图的任务
     const recoverable=/50[24]|超时|TIMEOUT|Bad Gateway/i.test(e.message||'');
-    const rec=recoverable?await pjRecoverLast(n.config.prompt||''):null;
+    const rec=recoverable?await pjRecoverLast(node.config.prompt||''):null;
     if(rec){
-      run.result=rec;run.states[n.id]='done';run.progress=Math.max(run.progress,idx+1);
-      pjAdvanceAuto(pr,run);run.error=null;
+      run.outputs[node.id]={...rec,label:node.label};
+      run.states[node.id]='done';run.status='pending';run.error=null;
+      pjAddVersion(pr,sku,run.outputs[node.id],node.label);
       projectSave();renderProjects();
       toast('网关超时，但已找回刚才生成的结果');
     }else{
       run.status='failed';run.error=e.message||'生成失败';
-      run.states[n.id]='failed';
+      run.states[node.id]='failed';
       projectSave();renderProjects();
       toast('生成失败：'+(e.message||'未知错误'));
     }
@@ -1644,16 +1757,15 @@ async function pjGenerateNode(){
     pjBusy=false;
   }
 }
-/* 人工确认通过后，自动把后面的交付节点走完 */
+/* 人工确认：只标记当前节点，不自动跑其它分支 */
 function pjApprove(){
   const pr=projectCurrent();const run=pr&&pjRun(pr,projectSkuId);if(!pr||!run)return;
-  const n=pr.nodes[run.progress];
+  const n=pr.nodes.find(x=>x.id===projectNodeId);
   if(!n||n.type!=='human_review')return;
-  run.states[n.id]='done';run.progress++;
-  pjAdvanceAuto(pr,run);
+  run.states=run.states||{};
+  run.states[n.id]='done';
   projectSave();renderProjects();
-  if(run.status==='done'){pjAddVersion(pr,projectSkuId,run.result);toast('已确认交付，结果已写入素材库');}
-  else toast('已通过人工确认');
+  toast('已通过人工确认');
 }
 
 async function pjRecoverLast(prompt){
@@ -1674,34 +1786,42 @@ async function pjRecoverLast(prompt){
 function pjResetRun(){
   const pr=projectCurrent();if(!pr)return;
   const run=pr.runs?.[projectSkuId];if(!run)return;
-  run.progress=0;run.states={};run.status='pending';run.result=null;run.error=null;run.current=null;
+  run.progress=0;run.states={};run.outputs={};run.status='pending';run.result=null;run.error=null;run.current=null;
   projectSave();renderProjects();toast('运行状态已重置，可重新运行');
 }
 function pjAddNode(){
   const pr=projectCurrent();if(!pr)return;
   const type=$('pj-add-type')?.value||'generate';
+  const parent=$('pj-add-parent')?.value||projectNodeId||pr.nodes.find(n=>n.type==='source')?.id||'';
   const id='n_'+Date.now();
   const config=type==='process'?{operation:'watermark',params:''}
     :type==='quality_check'?{}
     :{prompt:'',model:'',channelId:'',quality:'auto',size:'1024x1024',templateId:'',template:null};
-  const at=Math.max(1,pr.nodes.findIndex(n=>n.type==='human_review'));
-  pr.nodes.splice(at,0,{id,type,label:PJ_TYPE[type],config});
-  pr.runs={};projectNodeId=id;projectSave();renderProjects();toast('节点已添加，运行状态已重置');
+  const count=pr.nodes.filter(n=>n.type===type).length;
+  const parentNode=pr.nodes.find(n=>n.id===parent);
+  const siblings=pjEdges(pr).filter(e=>e.from===parent).length;
+  const node={id,type,label:PJ_TYPE[type]+(count?' '+(count+1):''),config,
+    position:{x:(parentNode?.position?.x||40)+240,y:(parentNode?.position?.y||60)+siblings*140}};
+  pr.nodes.push(node);
+  const edges=pjEdges(pr);
+  if(parent&&parent!==id)edges.push({from:parent,to:id});
+  projectNodeId=id;
+  projectSave();renderProjects();
+  toast('节点已添加；已有节点的结果会保留');
 }
 function pjDeleteNode(){
   const pr=projectCurrent();if(!pr)return;
   const n=pr.nodes.find(x=>x.id===projectNodeId);if(!n)return;
   if(['source','deliver','human_review'].includes(n.type)){toast('输入、人工确认、交付节点不能删除');return;}
   if(n.type==='generate'&&pr.nodes.filter(x=>x.type==='generate').length<=1){toast('至少保留一个生成节点');return;}
-  pr.nodes=pr.nodes.filter(x=>x.id!==n.id);pr.runs={};
-  projectNodeId=pr.nodes[0]?.id||'';projectSave();renderProjects();toast('节点已删除');
-}
-function pjMoveNode(dir){
-  const pr=projectCurrent();if(!pr)return;
-  const at=pr.nodes.findIndex(x=>x.id===projectNodeId);if(at<0)return;
-  const to=at+dir;if(to<0||to>=pr.nodes.length)return;
-  if(pr.nodes[at].type==='source'||pr.nodes[to].type==='source'||pr.nodes[at].type==='deliver'||pr.nodes[to].type==='deliver'){toast('输入与交付节点位置固定');return;}
-  [pr.nodes[at],pr.nodes[to]]=[pr.nodes[to],pr.nodes[at]];pr.runs={};projectSave();renderProjects();
+  pr.nodes=pr.nodes.filter(x=>x.id!==n.id);
+  pr.edges=pjEdges(pr).filter(e=>e.from!==n.id&&e.to!==n.id);
+  Object.values(pr.runs||{}).forEach(r=>{
+    if(r.states)delete r.states[n.id];
+    if(r.outputs)delete r.outputs[n.id];
+  });
+  projectNodeId=pr.nodes.find(x=>x.type==='generate')?.id||pr.nodes[0]?.id||'';
+  projectSave();renderProjects();toast('节点已删除，其它结果保留');
 }
 function pjNodeConfig(key,value,rerender){
   const pr=projectCurrent();const n=pr?.nodes.find(x=>x.id===projectNodeId);if(!n)return;
@@ -1769,10 +1889,12 @@ function pjInspector(pr,p,nodes,skuId){
       <div class="field"><label>参数</label><input class="input" value="${esc(n.config.params||'')}" placeholder="如水印文字 / 裁剪比例" onchange="pjNodeConfig('params',this.value);renderProjects()"></div>
       <p class="small muted">只允许裁剪、拼接、加水印、换文字四种原子操作，不执行脚本。</p>`;
   }else if(n.type==='human_review'){
-    const waiting=run.states?.[n.id]==='waiting';
-    body=waiting?`<p class="small muted">图片已生成，检查商品一致性、文字与合规后点「确认通过并继续」。</p>
-      <div class="flex" style="gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="pjApprove()">确认通过并继续</button></div>`
-      :`<p class="small muted">生成完成后会停在这里，等待人工确认；确认后自动走到交付。</p>`;
+    const done=run.states?.[n.id]==='done';
+    const hasOutput=Object.keys(run.outputs||{}).length>0;
+    body=done?'<p class="small muted">已通过人工确认。</p>'
+      :hasOutput?`<p class="small muted">检查生成结果的一致性、文字与合规，通过后记录确认状态。</p>
+        <div class="flex" style="gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="pjApprove()">确认通过</button></div>`
+      :'<p class="small muted">还没有生成结果；先在生成节点出图，再回来确认。</p>';
   }else if(n.type==='source'){
     const src=pr.sources?.[skuId];
     const fallback=productSourceImage(p);
@@ -1796,8 +1918,7 @@ function pjInspector(pr,p,nodes,skuId){
   }
   const fixed=['source','deliver','human_review'].includes(n.type);
   return `<div class="card"><div class="card-h"><h3>节点设置 · ${PJ_TYPE[n.type]}</h3>
-    <span class="flex"><button class="btn btn-ghost btn-sm" onclick="pjMoveNode(-1)">←</button><button class="btn btn-ghost btn-sm" onclick="pjMoveNode(1)">→</button>
-    ${fixed?'':'<button class="btn btn-ghost btn-sm" onclick="pjDeleteNode()">删除节点</button>'}</span></div>
+    <span class="flex">${fixed?'':'<button class="btn btn-ghost btn-sm" onclick="pjDeleteNode()">删除节点</button>'}</span></div>
     <div class="card-b">${body}</div></div>`;
 }
 function renderProjects(){
@@ -1820,18 +1941,34 @@ function renderProjects(){
   }
   if(!projectSkuId||!p.skus.some(s=>s.id===projectSkuId))projectSkuId=p.skus[0]?.id||'';
   if(!pr.nodes.some(n=>n.id===projectNodeId))projectNodeId=pr.nodes.find(n=>n.type==='generate')?.id||pr.nodes[0]?.id||'';
-  const run=pjRun(pr,projectSkuId)||{progress:0,status:'pending',states:{}};
+  const run=pjRun(pr,projectSkuId)||{states:{},outputs:{}};
+  run.states=run.states||{};run.outputs=run.outputs||{};
+  // 旧版本只存了单张 result，迁移到按节点存
+  if(run.result?.url&&!Object.keys(run.outputs).length){
+    const g=pr.nodes.find(n=>n.type==='generate');
+    if(g)run.outputs[run.result.nodeId||g.id]={...run.result,label:run.result.label||g.label};
+  }
   const sku=p.skus.find(s=>s.id===projectSkuId)||p.skus[0];
-  const nodeCards=pr.nodes.map((n,i)=>{
-    const st=run.states?.[n.id]||'pending';
-    return `${i?'<span class="pj-arrow" aria-hidden="true">→</span>':''}
-      <button type="button" class="pj-node ${n.id===projectNodeId?'active':''} ${st}" onclick="projectSelectNode('${n.id}')">
-        <span class="pj-node-type">${PJ_TYPE[n.type]}</span>
-        <b>${esc(n.label||PJ_TYPE[n.type])}</b>
-        <span class="pj-node-sub">${esc(n.type==='source'?(pr.sources?.[projectSkuId]?'已上传原图 · 图生图':(productSourceImage(p)?'用商品档案原始图':'未上传 · 纯文生图')):pjNodeSummary(n))}</span>
-        <span class="pill ${PJ_ST[st][0]}">${PJ_ST[st][1]}</span>
-      </button>`;
-  }).join('');
+  const source=pr.sources?.[projectSkuId]?.dataUrl||productSourceImage(p);
+  pjEnsurePositions(pr);
+  const nodeCard=n=>{
+    let st=n.type==='source'?(source?'ready':'pending'):(run.states[n.id]||'pending');
+    const out=run.outputs[n.id];
+    const parentLabels=pjEdges(pr).filter(e=>e.to===n.id)
+      .map(e=>pr.nodes.find(x=>x.id===e.from)?.label).filter(Boolean);
+    const sub=n.type==='source'
+      ?(pr.sources?.[projectSkuId]?'已上传原图 · 图生图':(productSourceImage(p)?'用商品档案原始图':'未上传 · 纯文生图'))
+      :pjNodeSummary(n);
+    return `<div class="pj-node pj-fnode ${n.id===projectNodeId?'active':''} ${st}" data-id="${n.id}"
+      style="left:${n.position.x}px;top:${n.position.y}px">
+      <span class="pj-node-type">${PJ_TYPE[n.type]}</span>
+      <b>${esc(n.label||PJ_TYPE[n.type])}</b>
+      <span class="pj-node-sub">${parentLabels.length?'接在 '+esc(parentLabels.join('、'))+' · ':''}${esc(sub)}</span>
+      ${out?.url?`<img src="${esc(out.url)}" alt="" style="width:100%;height:54px;object-fit:cover;border-radius:6px">`:''}
+      <span class="pill ${PJ_ST[st][0]}">${PJ_ST[st][1]}</span>
+    </div>`;
+  };
+  const nodeCards=pr.nodes.map(nodeCard).join('');
   const skuOpts=p.skus.map(s=>`<option value="${esc(s.id)}" ${s.id===projectSkuId?'selected':''}>${esc(skuDisplay(s))}</option>`).join('');
   const st=pjProjectStatus(pr);
   const selNode=pr.nodes.find(n=>n.id===projectNodeId);
@@ -1846,29 +1983,45 @@ function renderProjects(){
         <button class="btn btn-ghost btn-sm" onclick="pjPickSource()">${(pr.sources?.[projectSkuId]||productSourceImage(p))?'替换原图':'上传原图'}</button>
         <input type="file" id="pj-src-file-head" accept="image/*" hidden onchange="pjSourceUpload(this)">
         <button class="btn btn-primary btn-sm" onclick="pjGenerateNode()" ${genNode?'':'disabled'}>${genLabel}</button>
-        ${run.status==='waiting'?'<button type="button" class="btn btn-soft btn-sm" onclick="pjApprove()">确认通过并继续</button>':''}
         ${(run.status==='running'||run.status==='failed')?'<button type="button" class="btn btn-ghost btn-sm" onclick="pjResetRun()">重置运行</button>':''}
         <span class="small muted">先在生成节点写提示词，再点生成 · 不显示金额</span>
       </div>
       ${run.status==='failed'?`<div class="notice red" style="margin-top:10px">${esc(run.error||'上次运行失败，检查提示词与渠道后重试')}</div>`:''}
       </div></div>
     <div class="card"><div class="card-h"><h3>画布</h3>
-      <span class="flex"><select class="select" id="pj-add-type" style="width:auto">
+      <span class="flex" style="gap:6px;flex-wrap:wrap"><select class="select" id="pj-add-type" style="width:auto">
         <option value="generate">生成</option><option value="refine">精修</option><option value="process">处理</option><option value="quality_check">质检</option>
-      </select><button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
-      <div class="card-b"><div class="pj-canvas">${nodeCards}</div>
-      <p class="small muted" style="margin-top:10px">生成是人工动作：先写提示词，再点「生成图片」；生成后停在人工确认，确认后自动走到交付。改动画布会重置运行状态。</p></div></div>
-    ${((run.progress||0)>1||run.status==='waiting'||run.status==='done'||run.result)?`<div class="card"><div class="card-h"><h3>本次结果 · ${esc(skuDisplay(sku))}</h3>${run.result?.url?'<span class="pill green">真实生成</span>':'<span class="pill gray">原型示意</span>'}</div>
-      <div class="card-b"><div class="two-col" style="align-items:start">
-        <div class="project-preview" style="height:auto;min-height:220px;margin:0;padding:8px">
-          ${run.result?.url?`<img src="${esc(run.result.url)}" alt="生成结果">`:`${compositeSVG('white',(CATS[p.cat]||CATS.home).subject)}<span class="demo-label">生成结果（示意）</span>`}
+      </select>
+      <select class="select" id="pj-add-parent" style="width:auto" title="接在哪个节点后面；选同一个节点就形成并行分支">
+        ${pr.nodes.map(n=>`<option value="${n.id}" ${n.id===projectNodeId?'selected':''}>接在：${esc(n.label||PJ_TYPE[n.type])}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="pjAddNode()">＋ 添加节点</button></span></div>
+      <div class="card-b"><div class="pj-flow" id="pj-flow">
+        <div class="pj-flow-inner" id="pj-flow-inner">
+          <svg class="pj-edge-svg" id="pj-edge-svg" aria-hidden="true">
+            <defs><marker id="pj-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#9aa0ae"></path></marker></defs>
+          </svg>
+          ${nodeCards}
         </div>
-        <div>${run.result?.url?`<p class="small">模型 <b>${esc(run.result.model||'—')}</b> · 耗时 ${run.result.latency||0}ms</p>
-          <p class="small muted">已写入素材库版本（待确认）。生成按渠道调用计费。</p>`:`<p class="small muted">先在生成节点写提示词，再点「生成图片」；这里会显示渠道返回的真实图片。</p>`}
-          <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div>
-      </div></div></div>`:''}
+        <div class="pj-flow-tools">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="pjZoom(1.2)">＋</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="pjZoom(0.8)">－</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="pjFit(true)">适应</button>
+        </div>
+      </div>
+      <p class="small muted" style="margin-top:10px">拖动节点可调整位置；接在同一个父节点后面就是并行分支；新增/删除节点不会清空已生成的结果。滚轮缩放，拖空白处平移。</p></div></div>
+    ${Object.keys(run.outputs||{}).length?`<div class="card"><div class="card-h"><h3>生成结果 · ${esc(skuDisplay(sku))}</h3><span class="pill green">${Object.keys(run.outputs).length} 张</span></div>
+      <div class="card-b"><div class="pj-results">${Object.entries(run.outputs).map(([nid,o])=>{
+        const label=o.label||pr.nodes.find(n=>n.id===nid)?.label||'生成';
+        return `<div class="pj-result"><a href="${esc(o.url)}" target="_blank" rel="noopener"><img src="${esc(o.url)}" alt="${esc(label)}"></a>
+          <div class="m"><b class="small">${esc(label)}</b><div class="small muted">${esc(o.model||'')} · ${o.latency||0}ms</div></div></div>`;
+      }).join('')}</div>
+      <p class="small muted" style="margin-top:10px">每张图都已写入素材库版本（待确认）。并行分支会分别显示。</p>
+      <button type="button" class="btn btn-soft btn-sm" onclick="go('assets')">去素材库看版本</button></div></div>`:''}
     ${pjInspector(pr,p,pr.nodes,projectSkuId)}
   </div>`;
+  pjBindFlow();
 }
 const FIELD_SCOPE={
   beauty:{'容量':'generate','成分':'generate','适用说明':'generate','包装多角度图':'delivery'},
