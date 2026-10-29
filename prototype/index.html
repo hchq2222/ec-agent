@@ -1126,6 +1126,16 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
   </div>
 </div>
 
+<div class="modal-back" id="pick-image-modal">
+  <div class="modal" style="max-width:680px" role="dialog" aria-modal="true" aria-labelledby="pick-image-title">
+    <div class="modal-h"><h3 id="pick-image-title">选择模板参考图</h3><button class="btn btn-ghost btn-sm" aria-label="关闭" onclick="uiPickImageResolve(-1)">✕</button></div>
+    <div class="modal-b">
+      <p class="small muted" style="margin:0 0 10px">一个模板只保留 1 张参考图，请选择要用的那张。</p>
+      <div class="pj-results" id="pick-image-list"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -1186,6 +1196,21 @@ function uiPrompt(message,value=''){
     setTimeout(()=>{$('prompt-input')?.focus();$('prompt-input')?.select();},30);
   });
 }
+let pjPickImages=[],pjPickResolve=null;
+function uiPickImage(images){
+  return new Promise(resolve=>{
+    pjPickImages=images;pjPickResolve=resolve;
+    $('pick-image-list').innerHTML=images.map((u,i)=>`<button type="button" class="pj-result" style="padding:0;cursor:pointer" onclick="uiPickImageResolve(${i})">
+      <img src="${esc(u)}" alt="参考图 ${i+1}" style="height:160px;object-fit:contain;background:#fafbfc;display:block">
+      <div class="m small">图 ${i+1}</div></button>`).join('');
+    openModal('pick-image-modal');
+  });
+}
+function uiPickImageResolve(i){
+  closeModal('pick-image-modal');
+  const fn=pjPickResolve;pjPickResolve=null;
+  if(fn)fn(i>=0?pjPickImages[i]||null:null);
+}
 function uiPromptResolve(ok){
   const value=$('prompt-input').value;
   closeModal('prompt-modal');
@@ -1196,6 +1221,7 @@ function dismissModal(backdrop){
   if(!backdrop)return;
   if(backdrop.id==='confirm-modal'){uiConfirmResolve(false);return;}
   if(backdrop.id==='prompt-modal'){uiPromptResolve(false);return;}
+  if(backdrop.id==='pick-image-modal'){uiPickImageResolve(-1);return;}
   closeModal(backdrop.id);
 }
 document.querySelectorAll('.modal-back').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)dismissModal(m);}));
@@ -4014,16 +4040,21 @@ function exportVersion(n){
   });
   toast(`已开始导出 ${imgs.length} 张（多文件可能被浏览器拦截）`);
 }
-function saveVersionAsTemplate(n){
+async function saveVersionAsTemplate(n){
   const v=versions.find(x=>x.v===n&&!x.deleted);if(!v)return;
   const imgs=(v.images&&v.images.length?v.images:[v.img]).filter(Boolean);
   if(!imgs.length){toast('这个版本没有图片');return;}
+  let img=imgs[0];
+  if(imgs.length>1){
+    img=await uiPickImage(imgs);
+    if(!img)return;
+  }
   const t={id:'tpl_v'+Date.now(),name:`${v.title||'项目'} · v${v.v} 模板`,category:'all',
     size_w:1024,size_h:1024,subject_ratio:0.85,shadow:'soft',background:'scene',
-    text_slots:[],logo_slot:{},refImages:imgs.slice(0,4),builtin:false,builtin_key:null,
+    text_slots:[],logo_slot:{},refImages:[img],builtin:false,builtin_key:null,
     deleted:false,version:1};
   protoTemplates.push(t);tplSave();renderTemplates();renderProjects();
-  toast('已保存为模板，可在生成/精修/处理节点选用');
+  toast('已保存为模板（1 张参考图），可在生成/精修/处理节点选用');
 }
 function setVersion(n,to){
   const v=versions.find(x=>x.v===n), prev=versions.find(x=>x.status==='已确认');
