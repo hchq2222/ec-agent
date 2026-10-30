@@ -1015,13 +1015,13 @@ button.scene:disabled{opacity:.5;cursor:not-allowed}
       </div>
       <div class="field">
         <div class="flex" style="justify-content:space-between;margin-bottom:5px">
-          <label style="margin:0">品类必填字段（随品类切换）</label>
+          <label style="margin:0">商品参数</label>
           <button class="btn btn-soft btn-sm" onclick="aiExtract()">从原图 / 资料 AI 辅助提取</button>
         </div>
         <ul class="checklist" id="pm-fields"></ul>
       </div>
       <div class="field">
-        <label>其他参数</label>
+        <label>补充参数</label>
         <table class="table"><thead><tr><th style="width:42%">参数名</th><th>参数值</th><th style="width:48px"></th></tr></thead>
           <tbody id="pm-params"></tbody></table>
         <button type="button" class="btn btn-ghost btn-sm" onclick="pmAddParam()">＋ 添加参数</button>
@@ -2783,7 +2783,7 @@ function renderProductDetail(){
 
   const tabs=[
     ['basic','基础信息',''],
-    ['attrs','品类必填',miss.length?`<span class="pill amber">${miss.length}</span>`:''],
+    ['attrs','商品参数',miss.length?`<span class="pill amber">${miss.length}</span>`:''],
     ['sku','SKU',`<span class="pill gray">${p.skus.length}</span>`],
     ['images','图片与证据',''],
     ['impact','变更影响',p.affected?`<span class="pill red">${p.affected}</span>`:''],
@@ -2832,30 +2832,44 @@ function renderPdBasic(p,gen,del){
   </div>`;
 }
 function renderPdAttrs(p){
+  p.fields=p.fields||{};
+  // 旧的「其他参数」并入商品参数，统一走可新增/修改/删除的参数表
+  Object.entries(p.params||{}).forEach(([k,v])=>{
+    if(k&&!p.fields[k])p.fields[k]={v:String(v??''),src:'human',custom:true};
+  });
+  p.params={};
   const total=Object.keys(p.fields).length,confirmed=total-missingFields(p).length;
-  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>品类必填字段</h3><span class="pill ${confirmed===total?'green':'amber'}">已确认 ${confirmed}/${total}</span></div>
+  $('pd-body').innerHTML=`<div class="card"><div class="card-h"><h3>商品参数</h3><span class="pill ${confirmed===total?'green':'amber'}">已确认 ${confirmed}/${total}</span></div>
     <div class="card-b">
-      <div class="notice">高敏字段（成分、容量、认证、型号、接口）必须逐项确认；其余可核对后批量确认。</div>
-      <table class="table attr-table"><thead><tr><th>字段</th><th>值</th><th>来源</th><th>阻断</th><th></th></tr></thead>
-      <tbody>${Object.entries(p.fields).map(([k,f])=>{
-        const scope=fieldScope(p,k);
-        return `<tr>
-          <td>${esc(k)}<span class="req" style="color:var(--red)">*</span></td>
-          <td><input class="input" data-f="${esc(k)}" value="${esc(f.v)}" placeholder="${f.src==='missing'?'需商家提供，不允许空值':''}"></td>
-          <td>${SRC_TAG[f.src]||SRC_TAG.missing}</td>
-          <td><span class="scope-tag ${scope==='generate'?'gen':''}">${scope==='generate'?'拦生成':'仅拦交付'}</span></td>
-          <td>${f.src==='ai'?`<button type="button" class="btn btn-soft btn-sm" onclick="confirmAttr('${esc(k)}')">确认</button>`:f.src==='human'?'<span class="small muted">已确认</span>':''}</td>
-        </tr>`;}).join('')}</tbody></table>
+      <div class="notice">商品参数只来自商家资料，可新增、修改、删除；AI 提取的值需确认后才参与生成。</div>
+      <table class="table attr-table"><thead><tr><th style="width:26%">参数名</th><th>参数值</th><th style="width:160px">来源</th><th style="width:60px"></th></tr></thead>
+      <tbody>
+        ${Object.entries(p.fields).map(([k,f])=>`<tr>
+          <td><input class="input" data-rename="${esc(k)}" value="${esc(k)}" placeholder="参数名"></td>
+          <td><input class="input" data-f="${esc(k)}" value="${esc(f.v)}" placeholder="${f.src==='missing'?'需商家提供':''}"></td>
+          <td>${SRC_TAG[f.src]||SRC_TAG.missing}${f.src==='ai'?` <button type="button" class="btn btn-soft btn-sm" data-confirm-attr="${esc(k)}">确认</button>`:''}</td>
+          <td><button type="button" class="btn btn-ghost btn-sm" data-del-attr="${esc(k)}">删除</button></td>
+        </tr>`).join('')}
+        <tr>
+          <td><input class="input" id="pd-attr-new-key" placeholder="新参数名，如 净含量"></td>
+          <td><input class="input" id="pd-attr-new-val" placeholder="参数值，如 150ml" onkeydown="if(event.key==='Enter')addAttr()"></td>
+          <td colspan="2"><button type="button" class="btn btn-soft btn-sm" onclick="addAttr()">＋ 新增参数</button></td>
+        </tr>
+      </tbody></table>
       <div class="flex" style="justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-ghost btn-sm" onclick="confirmAllAttrs()">批量确认非高敏字段</button>
       </div>
-      ${Object.keys(p.params||{}).length?`<hr class="hr"><div class="field"><label>其他参数</label>
-        <table class="table"><tbody>${Object.entries(p.params).map(([k,v])=>`<tr><td style="width:160px">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
-        <p class="small muted" style="margin-top:6px">自定义参数不参与生成阻断，仅作展示与文案依据。</p></div>`:''}
     </div></div>`;
   $('pd-body').onchange=e=>{
-    const el=e.target.closest('[data-f]');if(!el)return;
-    setAttr(el.dataset.f,el.value);
+    const el=e.target;
+    if(el.dataset.rename!==undefined){renameAttr(el.dataset.rename,el.value);return;}
+    if(el.dataset.f!==undefined)setAttr(el.dataset.f,el.value);
+  };
+  $('pd-body').onclick=e=>{
+    const ok=e.target.closest('[data-confirm-attr]');
+    if(ok){confirmAttr(ok.dataset.confirmAttr);return;}
+    const del=e.target.closest('[data-del-attr]');
+    if(del)delAttr(del.dataset.delAttr);
   };
 }
 function renderPdSku(p){
@@ -3018,6 +3032,44 @@ async function setAttr(key,value){
   p.updatedAt=now();
   await persistProduct(p);
   renderProductList();renderProductDetail();
+}
+async function addAttr(){
+  const p=pById(curPid);if(!p)return;
+  const kEl=$('pd-attr-new-key'),vEl=$('pd-attr-new-val');
+  const k=(kEl?.value||'').trim(),v=(vEl?.value||'').trim();
+  if(!k){toast('先填参数名');kEl?.focus();return;}
+  if(!v){toast('先填参数值');vEl?.focus();return;}
+  if(p.fields[k]){toast('参数名已存在');kEl?.select();return;}
+  p.fields[k]={v,src:'human',custom:true};
+  audit.push({obj:p.short||p.name,op:'新增参数 · '+k,from:'—',to:v,who:OPERATOR,at:now()});
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
+  renderProductList();renderProductDetail();
+  toast(ok?`已新增参数「${k}」`:'保存失败，已回滚');
+}
+async function renameAttr(oldKey,newKey){
+  const p=pById(curPid);if(!p||!p.fields[oldKey])return;
+  newKey=String(newKey||'').trim();
+  if(!newKey||newKey===oldKey){renderProductDetail();return;}
+  if(p.fields[newKey]){toast('参数名已存在');renderProductDetail();return;}
+  p.fields[newKey]={...p.fields[oldKey]};
+  delete p.fields[oldKey];
+  audit.push({obj:p.short||p.name,op:'重命名参数',from:oldKey,to:newKey,who:OPERATOR,at:now()});
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
+  renderProductList();renderProductDetail();
+  toast(ok?'已重命名参数':'保存失败，已回滚');
+}
+async function delAttr(key){
+  const p=pById(curPid),f=p&&p.fields[key];if(!f)return;
+  if(!(await uiConfirm(`删除参数「${key}」？删除后该参数不再参与完整度和生成阻断。`)))return;
+  const old=f.v||'（空）';
+  delete p.fields[key];
+  audit.push({obj:p.short||p.name,op:'删除参数 · '+key,from:old,to:'（已删除）',who:OPERATOR,at:now()});
+  p.updatedAt=now();
+  const ok=await persistProduct(p);
+  renderProductList();renderProductDetail();
+  toast(ok?'已删除参数':'保存失败，已回滚');
 }
 async function confirmAttr(key){
   const p=pById(curPid),f=p.fields[key];if(!f)return;
@@ -3490,7 +3542,7 @@ async function piLoadProduct(id){
 }
 function mapApiProduct(d){
   const fields={};
-  (d.attrs||[]).forEach(a=>{fields[a.key]={v:[a.value,a.unit].filter(Boolean).join(' '),src:a.confirmed?'human':'ai'};});
+  (d.attrs||[]).forEach(a=>{const v=[a.value,a.unit].filter(Boolean).join(' ');fields[a.key]={v,src:v.trim()?(a.confirmed?'human':'ai'):'missing'};});
   const cat=CATS[d.category]?d.category:'beauty';
   const imgs=(d.images||[]).filter(i=>(i.mime||'').startsWith('image/'));
   const imageGroups={source:[],pack:[],evidence:[]};
@@ -3505,9 +3557,15 @@ function mapApiProduct(d){
 /* 把本地商品改动写回服务端；本地示例商品只存 localStorage */
 async function persistProduct(p){
   if(!isUuid(p.id)){saveProducts();return true;}
-  const attrs=Object.entries(p.fields||{})
-    .filter(([k,f])=>f&&String(f.v??'').trim()!=='')
-    .map(([k,f])=>({key:k,value:String(f.v),unit:'',source:f.src==='human'?'human':'ai',confirmed:f.src==='human'}));
+  const attrs=[];
+  Object.entries(p.fields||{}).forEach(([k,f])=>{
+    if(!k||!f)return;
+    attrs.push({key:k,value:String(f.v??''),unit:'',source:f.src==='human'?'human':'ai',confirmed:f.src==='human'});
+  });
+  const seen=new Set(attrs.map(a=>a.key));
+  Object.entries(p.params||{}).forEach(([k,v])=>{
+    if(k&&!seen.has(k)&&String(v??'').trim())attrs.push({key:k,value:String(v),unit:'',source:'human',confirmed:true});
+  });
   const skus=(p.skus||[]).map(s=>({id:isUuid(s.id)?s.id:null,color:s.color||'默认',spec:s.spec||'默认',price:s.price??null}));
   try{
     const r=await fetch(`${GS_API}/api/products/${p.id}`,{
