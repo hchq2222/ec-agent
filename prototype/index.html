@@ -1292,11 +1292,14 @@ function tplSave(){try{localStorage.setItem('proto.templates',JSON.stringify(pro
 function tplById(id){return protoTemplates.find(t=>t.id===id&&!t.deleted)||null;}
 async function loadTemplates(){
   try{
-    const res=await pjApi('/api/templates');
-    const server=(res.data||[]).map(t=>({...t,refImage:t.ref_image||''}));
+    // 带上已删除的模板：迁移 localStorage 时不能把刚删掉的同名模板又 POST 回来
+    const res=await pjApi('/api/templates?include_deleted=1');
+    const all=res.data||[];
+    const server=all.filter(t=>!t.deleted_at).map(t=>({...t,refImage:t.ref_image||''}));
     // 首次把 localStorage 里的自建模板迁移到数据库
     let local=[];try{local=JSON.parse(localStorage.getItem('proto.templates')||'[]');}catch(e){}
-    const names=new Set(server.map(t=>t.name));
+    const names=new Set(all.map(t=>t.name));
+    let pending=false;
     for(const t of local){
       if(!t||t.builtin||!t.name||names.has(t.name))continue;
       try{
@@ -1308,15 +1311,24 @@ async function loadTemplates(){
         })});
         server.push({...r.data,refImage:r.data.ref_image||''});
         names.add(t.name);
-      }catch(e){}
+      }catch(e){pending=true;}
     }
     protoTemplates.splice(0,protoTemplates.length,...server);
+    // 模板已以数据库为准；迁移完成后清掉本地镜像，避免以后再把已删模板带回来
+    if(local.length&&!pending)try{localStorage.removeItem('proto.templates');}catch(e){}
     renderTemplates();renderProjects();
   }catch(e){}
 }
 async function tplDelete(id){
   const t=protoTemplates.find(x=>x.id===id);if(!t)return;
   if(!(await uiConfirm(`删除模板「${t.name}」？删除后可从内置模板恢复。`)))return;
+  // 先清掉浏览器本地镜像，避免 loadTemplates 迁移逻辑把它当成“未迁移模板”再建回来
+  try{
+    const local=JSON.parse(localStorage.getItem('proto.templates')||'[]');
+    const keep=local.filter(x=>x&&x.id!==id&&x.name!==t.name);
+    if(keep.length)localStorage.setItem('proto.templates',JSON.stringify(keep));
+    else localStorage.removeItem('proto.templates');
+  }catch(e){}
   try{
     await pjApi(`/api/templates/${id}`,{method:'DELETE'});
     await loadTemplates();

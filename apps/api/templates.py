@@ -68,11 +68,13 @@ async def seed_builtins_if_empty(session: Any) -> None:
 
 
 @router.get("")
-async def list_templates(category: str | None = None) -> dict[str, Any]:
+async def list_templates(category: str | None = None, include_deleted: bool = False) -> dict[str, Any]:
     a = api()
     async with a.db.session() as session:
         await seed_builtins_if_empty(session)
-        stmt = select(LayoutTemplate).where(LayoutTemplate.deleted_at.is_(None))
+        stmt = select(LayoutTemplate)
+        if not include_deleted:
+            stmt = stmt.where(LayoutTemplate.deleted_at.is_(None))
         if category:
             stmt = stmt.where(LayoutTemplate.category.in_(["all", category]))
         stmt = stmt.order_by(LayoutTemplate.builtin.desc(), LayoutTemplate.created_at)
