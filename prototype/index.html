@@ -3857,7 +3857,8 @@ const LAYERS=[
   {key:'price',icon:'🅣',name:'价格文字',sub:()=>'¥'+cv.price+' · 可编辑',lock:false},
   {key:'title',icon:'🅣',name:'标题文字',sub:()=>cv.title,lock:false},
 ];
-const latestVersion=()=>versions.filter(v=>v.status!=='已驳回').slice(-1)[0];
+const latestVersion=()=>versions.filter(v=>v.status!=='已驳回').slice(-1)[0]
+  ||{v:0,price:0,title:'暂无交付版本',bg:'white',status:'待确认'};
 const snap=o=>JSON.stringify({price:o.price,title:o.title,bg:o.bg});
 function resetCanvas(){const v=latestVersion();base={price:v.price,title:v.title,bg:v.bg,v:v.v,status:v.status};cv={price:v.price,title:v.title,bg:v.bg};hist=[];fut=[];checks=null;}
 const isDirty=()=>snap(cv)!==snap(base);
