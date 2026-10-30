@@ -11,7 +11,7 @@
 |---|---|
 | 阶段 | **P0 技术验证中**（架构与中间件已完成，核心验证未做） |
 | 代码 | 生图服务、商品档案原型及项目/React Flow 开发切片已落地；**33 项离线单测通过**，项目端到端未实测 |
-| 中间件 | 已就绪并通过外网实测，见 `infrastructure/测试环境中间件访问说明.md` |
+| 中间件 | 已就绪并通过外网实测，见 `infrastructure/README.md` |
 | 当前卡点 | 地基未落：商品表、素材「槽位+版本」、`job_item`、登录/审计、`price_book` 均未实施；项目工作流预算、自动质检与崩溃恢复未完成 |
 | 下一关 | 按 TD-004 顺序实施 `0003`–`0007`；交付清单按「自由选择」落地（不预设 8 位），再做 10 SKU 实测 |
 
@@ -84,13 +84,13 @@
 
 - ✅ **需求**：完整需求地图（32 功能 / 14 品类）裁剪为 MVP 的 M1–M9，明确 10 条不做。
 - ✅ **技术架构**：分层架构、中间件职责边界、数据模型（原 9 表 + 补 5 表）、任务状态机与对账器、部署拓扑、失败处理矩阵、架构验收标准 → `docs/技术设计/TD-001-总体技术架构.md`。
-- ✅ **中间件**：测试服务器（`203.0.113.10`）PostgreSQL 17 / Redis 7.4 / MinIO 就绪；新增 PG 角色 `dianshang` + schema `app`、Redis ACL 用户、四个业务桶（`raw`/`work`/`assets`/`export`）及生命周期；MinIO 强制 TLS（PG / Redis 同日后改为明文）；从外网完成 PG 读写、Redis roundtrip、MinIO put/get、TLS 握手验证 → `infrastructure/测试环境中间件访问说明.md`。
+- ✅ **中间件**：测试服务器（`203.0.113.10`）PostgreSQL 17 / Redis 7.4 / MinIO 就绪；新增 PG 角色 `dianshang` + schema `app`、Redis ACL 用户、四个业务桶（`raw`/`work`/`assets`/`export`）及生命周期；MinIO 强制 TLS（PG / Redis 同日后改为明文）；从外网完成 PG 读写、Redis roundtrip、MinIO put/get、TLS 握手验证 → `infrastructure/README.md`。
 - ✅ **文档结构**：`README.md` 作为项目说明与文档索引，`AGENTS.md` 只做导航，本文件记录进度。
 - ✅ **凭据脱敏**：真实密码移入本地 `infrastructure/credentials.local.md`（已被 `*.local.md` 忽略），仓库文档改为 `${XXX_PASSWORD}` 占位符；重写提交历史并强推，远端 `main` 已无任何明文密码。
 - 🟡 **渠道接入方案**：曾完成一版渠道抽象 / 能力矩阵 / 产物转存 / 计费对账设计，文档已移除；**结论暂时保留**（聚合渠道为主 + 官方按能力兜底，产物必须同一步转存），具体方案待后续重新确定。
 - ✅ **PostgreSQL 放开明文**：按需求把 `pg_hba.conf` 的 `hostnossl` 从 `reject` 改为 `scram-sha-256`（改用原地覆盖 + `chmod 644` + reload；TLS 保持可用），外网已验证 `sslmode=disable` 可连、错误密码仍被拒。
 - ✅ **Redis 改为明文**：`redis.conf` 的 `port 0` → `6379`、`tls-port` 关闭，compose 健康检查改为 `redis-cli ping` 并重建容器；AOF 数据完好，外网明文读写、错误密码拒绝、匿名拒绝均验证通过。
-- ✅ **文档结构整理**：`README.md` 移至根目录并改为项目索引；`AGENTS.md` 精简为导航页（只留"去哪看"）；新增 `PHASE.md`；恢复 `infrastructure/测试环境中间件访问说明.md`；清理 `TD-001` 中对已移除文档的引用。
+- ✅ **文档结构整理**：`README.md` 移至根目录并改为项目索引；`AGENTS.md` 精简为导航页（只留"去哪看"）；新增 `PHASE.md`；恢复 `infrastructure/README.md`；清理 `TD-001` 中对已移除文档的引用。
 - ⬜ **未开始**：图层拆分验证。
 
 ### 2026-10-26 · 商品对话录入

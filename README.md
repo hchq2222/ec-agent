@@ -26,7 +26,7 @@
 | 2 | [`docs/MVP需求说明-电商视觉工作台.md`](docs/MVP需求说明-电商视觉工作台.md) | 一定，这是**当前要落地的范围**（M1–M9） |
 | 3 | [`docs/电商工作台需求说明.html`](docs/电商工作台需求说明.html)（v0.9） | 做具体功能时查，**这是最终需求的权威依据** |
 | 4 | [`docs/技术设计/`](docs/技术设计/) 下的文件 | 动手写代码前 |
-| 5 | [`infrastructure/测试环境中间件访问说明.md`](infrastructure/测试环境中间件访问说明.md) | **连数据库 / Redis / MinIO 之前必读**，含账号名、证书与已知坑（**密码不在仓库**） |
+| 5 | [`infrastructure/README.md`](infrastructure/README.md) | 本地依赖与配置说明（**真实地址、账号、密码、证书不在仓库**） |
 | 6 | `docs/需求变更/` 下的文件（按日期倒序） | 确认范围是否被改过 |
 | 7 | [`PHASE.md`](PHASE.md) | 想知道"做到哪了、下一步做什么"时 |
 
@@ -74,8 +74,7 @@ npm run build
 | `docs/技术设计/TD-006-商品对话录入.md` | 商品聊天录入、图片/PDF 识别、草稿确认、商品 API 与数据表 | ★★★ | **已实现**（测试环境） |
 | `docs/需求变更/2026-10-26-商品对话录入.md` | 商品入口从手动表单改为对话识别 + 人工确认 | ★★★ | 已实现 |
 | `docs/需求变更/2026-10-28-产品结构收敛.md` | 聊天唯一入口、项目=画布工作区、模板 CRUD、软删回收站、报价/KPI/视频下线 | ★★★ | 已确认，实施中 |
-| `infrastructure/测试环境中间件访问说明.md` | PostgreSQL / Redis / MinIO 的地址、账号、TLS 证书、桶规划、运维命令、已知坑 | ★★★ | 已确认（2026-10-21 外网实测通过） |
-| `infrastructure/certs/ca.crt` | 中间件私有 CA，客户端校验证书用 | — | 有效期至 2029-10-20，服务证书 2027-10-21 到期 |
+| `infrastructure/README.md` | PostgreSQL / Redis / MinIO 的本地配置与部署依赖（**不包含真实地址、账号或证书**） | ★★ | 公开版 |
 | `prototype/index.html` | 可视化原型，用于沟通，**不属于需求依据** | ★ | 可随时调整 |
 
 ---
@@ -117,9 +116,9 @@ docs/技术设计/TD-NNN-主题.md
 
 ### 4.3 基础设施与凭据
 
-- **中间件的地址、账号名、证书指纹、运维命令、已知坑**统一放在 `infrastructure/测试环境中间件访问说明.md`，不复制到其它文档。
-- **真实密码不入库**：只放本地 `infrastructure/credentials.local.md`（`.gitignore` 的 `*.local.md` 已忽略）。仓库文档里一律用 `${XXX_PASSWORD}` 占位符。
-- CA 证书放 `infrastructure/certs/`，仅作客户端校验使用。
+- **真实地址、账号名、证书与运维命令不入库**：放在本地 `infrastructure/credentials.local.md`（`.gitignore` 的 `*.local.md` 已忽略），公开文档里只保留占位符。
+- **真实密码不入库**：仓库文档里一律用 `${XXX_PASSWORD}` 占位符。
+- 使用自建 CA 时，把 CA 文件放在本地路径，并通过 `MINIO_CA_BUNDLE` 指向它；仓库不附带测试环境证书。
 - 轮换密码只改本地凭据文件；占位符不用动。
 
 ### 4.4 进度
@@ -149,7 +148,7 @@ docs/技术设计/TD-NNN-主题.md
 |---|---|
 | 阶段 | **P0 技术验证中**：架构、中间件、生图接入与基础出图已完成；参数组合与一致性待验 |
 | 技术基线 | Python 3.12+ / FastAPI；PostgreSQL 17 / Redis 7.4 + Arq / MinIO；生图 走 OpenAI 兼容渠道（omyai）；火山引擎（Seedream / Seedance）为后续候选 |
-| 中间件 | **已就绪**（`203.0.113.10`，外网实测通过；PG / Redis 走明文，MinIO 走 TLS），见 `infrastructure/测试环境中间件访问说明.md` |
+| 中间件 | **架构已就绪**（PostgreSQL / Redis / MinIO；真实测试环境地址不公开） |
 | 代码 | 生图服务、商品档案原型及项目/React Flow 开发切片已落地；既有生图链路已验证，项目链路尚未端到端实测；离线测试通过 |
 | 下一步 | ① 实施 `0003`–`0007`（商品 → 系统 → 计费 → 素材 → 任务）② 自由交付清单与合规导出落地 ③ 回填计费口径 |
 

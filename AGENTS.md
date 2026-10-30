@@ -20,23 +20,15 @@
 | 商品链接怎么解析、支持到什么程度 | [`docs/技术设计/TD-003-商品链接导入.md`](docs/技术设计/TD-003-商品链接导入.md) |
 | 商品/素材/任务/成本/登录的模式与实施顺序（当前架构基准） | [`docs/技术设计/TD-004-商品素材与生产流程.md`](docs/技术设计/TD-004-商品素材与生产流程.md) |
 | 商品对话录入、图片/PDF 识别与商品 API | [`docs/技术设计/TD-006-商品对话录入.md`](docs/技术设计/TD-006-商品对话录入.md) |
-| **中间件地址 / 账号名 / 证书 / 运维 / 已知坑** | [`infrastructure/测试环境中间件访问说明.md`](infrastructure/测试环境中间件访问说明.md)（**密码不在仓库**，见本地 `credentials.local.md`） |
+| **中间件地址 / 账号名 / 证书 / 运维 / 已知坑** | [`infrastructure/README.md`](infrastructure/README.md)（**密码不在仓库**，见本地 `credentials.local.md`） |
 | 当前进度、下一步、待决事项 | [`PHASE.md`](PHASE.md) |
 | 可视化原型（非权威） | `prototype/index.html` |
 
 ## 连接信息在哪（速查）
 
-| 需要什么 | 位置 |
-|---|---|
-| PostgreSQL 地址 / 账号 | 中间件访问说明 **§二 连接总表**；参数细节 **§四**；密码见本地 `infrastructure/credentials.local.md` |
-| Redis 地址 / 账号 | 同上 **§二**；连接写法 **§五**；密码见本地凭据文件 |
-| MinIO AccessKey / 控制台 | 同上 **§二**；桶规划 **§六**；SecretKey 见本地凭据文件 |
-| 数据库超管 / Redis 管理账号 / SSH | 同上 **§二 管理账号**（密码同样在本地凭据文件） |
-| CA 证书文件 | [`infrastructure/certs/ca.crt`](infrastructure/certs/ca.crt) |
-| 运维命令（重启/备份/日志） | 同上 **§九** |
-| 踩过的坑（ACL inode、CRLF、TLS） | 同上 **§十一** |
+真实地址、账号、密码、证书和运维命令**不在仓库**，放在本地 `infrastructure/credentials.local.md`（已被 `.gitignore` 忽略）。仓库只保留 `.env.example` 占位符和 [`infrastructure/README.md`](infrastructure/README.md) 的通用说明。
 
-连接约定：**PG 与 Redis 都是明文**（PG 仍可走 TLS）；**MinIO 必须 TLS + path-style + 私有 CA**。库名用 `ec_agent_pro`（不是 `postgres`）。
+连接约定：PostgreSQL / Redis 可用明文连接（PG 也可走 TLS）；MinIO 建议 TLS + path-style；库名以 `.env` 为准。
 
 ## 本地怎么跑（生图服务）
 
